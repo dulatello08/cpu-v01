@@ -2,8 +2,8 @@
 
 # ---- Project ----
 TOP       ?= top
-SRC       := $(wildcard *.v *.sv)
-LPF       ?= ulx3s_85f.lpf
+SRC       := $(wildcard */*.sv */*.v *.v *.sv)
+LPF       ?= ulx3s-85f-min.lpf
 
 # ---- Device (ULX3S 85F = LFE5U-85F-6-CABGA381) ----
 DEVICE_OPTS := --85k --package CABGA381 --speed 6
@@ -44,6 +44,7 @@ $(SVF): $(CFG)
 	$(ECPPACK) --svf $(SVF) $(CFG)
 
 # Convenience aliases
+json: $(JSON)
 bit: $(BIT_SRAM)
 sram: $(BIT_SRAM)
 
