@@ -52,4 +52,9 @@ module tb_reg_file;
 
     $finish;
   end
+  initial begin
+    $monitor("[%0t] ra=%0d rda=%h  rb=%0d rdb=%h  we_a=%b we_b=%b",
+             $time, ra, rda, rb, rdb, we_a, we_b);
+  end
+
 endmodule
