@@ -260,7 +260,7 @@ The NeoCore16x32 CPU is **functionally complete** and passes all unit tests and 
 
 ## License
 
-This project is licensed under the MIT License. See the root LICENSE file for details.
+This project is licensed under the GPL 3.0 License. See the root LICENSE file for details.
 
 ## Authors and Acknowledgments
 
