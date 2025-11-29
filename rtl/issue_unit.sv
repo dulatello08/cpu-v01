@@ -87,6 +87,13 @@ module issue_unit
     
     // Multiply restriction: UMULL/SMULL cannot dual-issue (implementation choice)
     mul_restriction = (inst0_type == ITYPE_MUL) || (inst1_type == ITYPE_MUL);
+
+    // Dual-write restriction: If inst0 writes two registers (e.g. MOV 2-reg load),
+    // it uses both write ports, so inst1 cannot write anything.
+    // For simplicity, we just prevent dual-issue if inst0 writes two registers.
+    if (inst0_rd_we && inst0_rd2_we) begin
+      write_port_conflict = 1'b1;
+    end
   end
   
   // ============================================================================

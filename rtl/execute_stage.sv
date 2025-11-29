@@ -279,8 +279,32 @@ module execute_stage
     
     // Memory address calculation
     if (id_ex_0.mem_read || id_ex_0.mem_write) begin
-      // For memory operations, address is in immediate field
-      ex_mem_0.mem_addr = id_ex_0.immediate;
+      // Determine address based on specifier
+      if (id_ex_0.itype == ITYPE_MOV) begin
+        if (id_ex_0.specifier >= 8'h0B && id_ex_0.specifier <= 8'h12) begin
+          // Offset addressing: [rn + offset]
+          // Base address is in operand_a (rn), offset is in immediate
+          ex_mem_0.mem_addr = operand_a_0 + id_ex_0.immediate;
+        end else begin
+          // Absolute addressing or register indirect (handled as absolute if address passed)
+          // For [addr], address is in mem_addr
+          ex_mem_0.mem_addr = id_ex_0.mem_addr;
+        end
+      end else if (id_ex_0.itype == ITYPE_ALU && id_ex_0.specifier == 8'h02) begin
+        // ALU memory operand: [addr]
+        ex_mem_0.mem_addr = id_ex_0.mem_addr;
+      end else if (id_ex_0.itype == ITYPE_STACK) begin
+         // Stack operations use SP (R14) - implicit
+         // This would need R14 read and update, but for now assuming simplified model
+         // or that decode maps SP to a register operand.
+         // Current decode maps PSH/POP to use register operands, but address?
+         // PSH: mem_write, mem_size=HALF. Address should be SP.
+         // POP: mem_read, mem_size=HALF. Address should be SP.
+         // If not fully implemented, we'll leave as is or assume operand_a has address
+         ex_mem_0.mem_addr = operand_a_0; // Placeholder for stack ops
+      end else begin
+        ex_mem_0.mem_addr = id_ex_0.mem_addr;
+      end
     end else begin
       ex_mem_0.mem_addr = 32'h0;
     end
@@ -328,7 +352,21 @@ module execute_stage
     ex_mem_1.v_flag = alu_v_1;
     
     if (id_ex_1.mem_read || id_ex_1.mem_write) begin
-      ex_mem_1.mem_addr = id_ex_1.immediate;
+      // Determine address based on specifier
+      if (id_ex_1.itype == ITYPE_MOV) begin
+        if (id_ex_1.specifier >= 8'h0B && id_ex_1.specifier <= 8'h12) begin
+          // Offset addressing: [rn + offset]
+          ex_mem_1.mem_addr = operand_a_1 + id_ex_1.immediate;
+        end else begin
+          // Absolute addressing
+          ex_mem_1.mem_addr = id_ex_1.mem_addr;
+        end
+      end else if (id_ex_1.itype == ITYPE_ALU && id_ex_1.specifier == 8'h02) begin
+        // ALU memory operand: [addr]
+        ex_mem_1.mem_addr = id_ex_1.mem_addr;
+      end else begin
+        ex_mem_1.mem_addr = id_ex_1.mem_addr;
+      end
     end else begin
       ex_mem_1.mem_addr = 32'h0;
     end

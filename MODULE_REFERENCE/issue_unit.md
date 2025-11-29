@@ -66,7 +66,11 @@ Instructions can be dual-issued if **ALL** of these conditions are met:
 waw_hazard = (inst0_rd_we && inst1_rd_we && inst0_rd_addr == inst1_rd_addr) ||
              (inst0_rd2_we && inst1_rd2_we && inst0_rd2_addr == inst1_rd2_addr) ||
              (inst0_rd_we && inst1_rd2_we && inst0_rd_addr == inst1_rd2_addr) ||
+             (inst0_rd_we && inst1_rd2_we && inst0_rd_addr == inst1_rd2_addr) ||
              (inst0_rd2_we && inst1_rd_we && inst0_rd2_addr == inst1_rd_addr);
+
+// Dual-write restriction: If inst0 writes two registers, it uses both write ports
+if (inst0_rd_we && inst0_rd2_we) write_port_conflict = 1'b1;
 
 // RAW hazard
 raw_hazard = (inst0_rd_we && inst0_rd_addr != 0 && 

@@ -404,7 +404,10 @@ data_dependency = inst0_rd_we &&
 **Restrictions**:
 ```verilog
 branch_restriction = inst0_is_branch || inst1_is_branch;
+branch_restriction = inst0_is_branch || inst1_is_branch;
 mul_restriction = (inst0_type == ITYPE_MUL) || (inst1_type == ITYPE_MUL);
+// Dual-write restriction
+if (inst0_rd_we && inst0_rd2_we) write_port_conflict = 1'b1;
 ```
 
 ### Issue Decision

@@ -132,6 +132,7 @@ typedef struct packed {
   logic        rd_we, rd2_we;
   logic        mem_read, mem_write;
   mem_size_e   mem_size;
+  logic [31:0] mem_addr;        // Memory address (absolute)
   logic        is_branch, is_jsr, is_rts, is_halt;
 } id_ex_t;
 ```

@@ -25,6 +25,7 @@ The Decode Unit decodes variable-length instructions and extracts operands, imme
 | `rd2_addr` | output | 4 | Second destination register (for 32-bit ops) |
 | `rd2_we` | output | 1 | Second destination write enable |
 | `immediate` | output | 32 | Immediate value (sign/zero-extended) |
+| `mem_addr` | output | 32 | Memory address (absolute) |
 | `mem_read` | output | 1 | Memory read operation |
 | `mem_write` | output | 1 | Memory write operation |
 | `mem_size` | output | `mem_size_e` | Memory access size |

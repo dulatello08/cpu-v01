@@ -128,6 +128,7 @@ package neocore_pkg;
     logic        mem_read;        // Memory read operation
     logic        mem_write;       // Memory write operation
     mem_size_e   mem_size;        // Memory access size
+    logic [31:0] mem_addr;        // Memory address (absolute)
     
     // Branch operation
     logic        is_branch;       // Is a branch instruction

@@ -1,3 +1,6 @@
+> [!WARNING]
+> This document is deprecated and may contain outdated information regarding instruction lengths and encodings. Please refer to [ISA_REFERENCE.md](ISA_REFERENCE.md) for the authoritative and correct instruction set reference.
+
 ### Instruction: nop
 **Opcode:** 0x00
 

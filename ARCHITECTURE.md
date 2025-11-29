@@ -29,8 +29,8 @@ The NeoCore16x32 is a modern 16-bit CPU architecture with 32-bit addressing capa
 
 ### Architectural Family
 
-The NeoCore16x32 is a **load-store architecture** with **Von Neumann** memory organization:
-- Data operations occur only between registers
+The NeoCore16x32 is a **primarily load-store architecture** with **Von Neumann** memory organization:
+- Data operations occur between registers primarily
 - Explicit load/store instructions for memory access
 - Single unified address space for code and data
 - Big-endian byte ordering throughout
@@ -101,7 +101,7 @@ Address  Content      Field
 ---
 
 ## Register Architecture
-
+ 
 ### General-Purpose Registers
 
 The NeoCore16x32 provides **16 general-purpose registers** numbered R0 through R15. Each register is **16 bits wide**.
@@ -666,6 +666,12 @@ This includes: B, BE, BNE, BLT, BGT, BRO, JSR, RTS
 UMULL and SMULL are complex (32-bit result, two register writes) and cannot dual-issue.
 - ❌ `UMULL R1, R2, R3` + `ADD R4, R5` (first is UMULL)
 - ✅ UMULL issues alone
+
+#### 5. Instruction 0 Writes Two Registers
+
+If instruction 0 writes to two registers (e.g., `MOV` loading two registers, or `UMULL`/`SMULL`), it consumes both register file write ports. Instruction 1 cannot issue if it also needs to write a register.
+- ❌ `MOV R1, R2, [0x1000]` + `ADD R3, R4` (inst0 writes R1 and R2)
+- ✅ `MOV R1, R2, [0x1000]` issues alone
 
 ### Dual-Issue Success Conditions
 

@@ -320,7 +320,9 @@ module core_top
     id_ex_in_0.rd2_we = decode_rd2_we_0;
     id_ex_in_0.mem_read = decode_mem_read_0;
     id_ex_in_0.mem_write = decode_mem_write_0;
+    id_ex_in_0.mem_write = decode_mem_write_0;
     id_ex_in_0.mem_size = decode_mem_size_0;
+    id_ex_in_0.mem_addr = decode_mem_addr_0;
     id_ex_in_0.is_branch = decode_is_branch_0;
     id_ex_in_0.is_jsr = decode_is_jsr_0;
     id_ex_in_0.is_rts = decode_is_rts_0;
@@ -344,7 +346,9 @@ module core_top
     id_ex_in_1.rd2_we = decode_rd2_we_1;
     id_ex_in_1.mem_read = decode_mem_read_1;
     id_ex_in_1.mem_write = decode_mem_write_1;
+    id_ex_in_1.mem_write = decode_mem_write_1;
     id_ex_in_1.mem_size = decode_mem_size_1;
+    id_ex_in_1.mem_addr = decode_mem_addr_1;
     id_ex_in_1.is_branch = decode_is_branch_1;
     id_ex_in_1.is_jsr = decode_is_jsr_1;
     id_ex_in_1.is_rts = decode_is_rts_1;

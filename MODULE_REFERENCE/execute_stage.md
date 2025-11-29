@@ -71,11 +71,11 @@ Branch unit evaluates conditions:
 - Unconditional: B (always taken)
 
 ### Memory Address Computation
-
+ 
 For load/store instructions:
-- Base + offset addressing
-- Register indirect
-- Absolute addressing
+- **Offset Addressing**: `mem_addr = operand_a + immediate` (for specifiers 0x0B-0x12)
+- **Absolute Addressing**: `mem_addr = id_ex.mem_addr` (for specifiers 0x02-0x0A)
+- **Register Indirect**: Handled as absolute if address passed, or offset with 0
 
 ### Usage Example
 
