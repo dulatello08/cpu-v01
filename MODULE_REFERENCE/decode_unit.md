@@ -11,7 +11,7 @@ The Decode Unit decodes variable-length instructions and extracts operands, imme
 |------|-----------|-------|-------------|
 | `clk` | input | 1 | Clock signal |
 | `rst` | input | 1 | Reset signal |
-| `inst_data` | input | 104 | Raw instruction bytes (up to 13 bytes) |
+| `inst_data` | input | 104 | Raw instruction bytes (up to 9 bytes, padded) |
 | `inst_len` | input | 4 | Instruction length in bytes |
 | `pc` | input | 32 | Program counter for this instruction |
 | `valid_in` | input | 1 | Instruction valid signal |

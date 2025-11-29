@@ -19,7 +19,7 @@ The Fetch Unit retrieves variable-length instructions from unified memory and ma
 | `mem_req` | output | 1 | Memory request signal |
 | `mem_rdata` | input | 128 | 16 bytes of instruction data (big-endian) |
 | `mem_ack` | input | 1 | Memory acknowledge signal |
-| `inst_data_0` | output | 104 | First instruction bytes (up to 13 bytes) |
+| `inst_data_0` | output | 104 | First instruction bytes (up to 9 bytes, padded) |
 | `inst_len_0` | output | 4 | First instruction length in bytes |
 | `pc_0` | output | 32 | PC of first instruction |
 | `valid_0` | output | 1 | First instruction valid |

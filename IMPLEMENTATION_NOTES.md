@@ -586,7 +586,7 @@ Each has:
 |---------|--------------|------------|
 | Pipeline Stages | 5 | 5 |
 | Issue Width | 2 (dual) | 1 (single) |
-| Instruction Length | Variable (2-13 bytes) | Fixed (32 bits) |
+| Instruction Length | Variable (2-9 bytes) | Fixed (32 bits) |
 | Byte Order | Big-endian | Big-endian (configurable) |
 | Register Count | 16 x 16-bit | 32 x 32-bit |
 | Branch Delay | None | 1 slot |

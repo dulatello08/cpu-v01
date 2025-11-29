@@ -41,7 +41,7 @@ module fetch_unit
   input  logic        mem_ack,
   
   // Output to decode
-  output logic [103:0] inst_data_0,  // First instruction (up to 13 bytes)
+  output logic [103:0] inst_data_0,  // First instruction (up to 9 bytes, padded to 104 bits)
   output logic [3:0]   inst_len_0,   // First instruction length
   output logic [31:0]  pc_0,         // PC of first instruction
   output logic         valid_0,      // First instruction valid
@@ -244,7 +244,7 @@ module fetch_unit
     // First instruction
     valid_0 = (buffer_valid >= {2'b0, inst_len_0}) && !branch_taken && (inst_len_0 > 0);
     
-    // Extract instruction bytes (up to 13 bytes) from byte array
+    // Extract instruction bytes (up to 9 bytes, padded to 104 bits) from byte array
     // inst_data format: bits[103:96]=byte0, bits[95:88]=byte1, etc. (big-endian)
     for (int i = 0; i < 13; i++) begin
       inst_data_0[(12-i)*8 +: 8] = fetch_buffer[i];

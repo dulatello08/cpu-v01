@@ -136,7 +136,7 @@ data_rdata <= {
 
 ### Wide Instruction Fetch
 
-To support **variable-length instructions** (2-13 bytes), the instruction fetch port fetches **16 bytes (128 bits)** per cycle:
+To support **variable-length instructions** (2-9 bytes), the instruction fetch port fetches **16 bytes (128 bits)** per cycle:
 
 **Fetch Operation**:
 ```verilog

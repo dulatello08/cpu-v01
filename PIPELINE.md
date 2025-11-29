@@ -86,7 +86,7 @@ Buffer bit positions (big-endian):
 
 **First Instruction (inst_data_0)**:
 ```verilog
-inst_data_0 = fetch_buffer[255:152];  // Top 13 bytes (104 bits)
+inst_data_0 = fetch_buffer[255:152];  // Top 9 bytes (with padding to 104 bits)
 inst_len_0 = get_inst_length(opcode_0, specifier_0);
 pc_0 = buffer_pc;
 valid_0 = (buffer_valid >= inst_len_0) && (inst_len_0 > 0);
@@ -620,7 +620,7 @@ Data flows between pipeline stages through registers that hold the pipeline stat
 typedef struct packed {
   logic        valid;        // Instruction valid
   logic [31:0] pc;           // Program counter
-  logic [103:0] inst_data;   // Up to 13 bytes of instruction
+  logic [103:0] inst_data;   // Up to 9 bytes of instruction (with padding to 104 bits)
   logic [3:0]  inst_len;     // Length in bytes
 } if_id_t;
 ```

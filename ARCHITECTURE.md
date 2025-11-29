@@ -158,7 +158,7 @@ In addition to the 16 general-purpose registers, the CPU maintains special state
 - **Width**: 32 bits
 - **Function**: Points to the next instruction to fetch
 - **Access**: Indirect via branch instructions (B, BE, JSR, etc.)
-- **Increment**: Variable (2 to 13 bytes) based on instruction length
+- **Increment**: Variable (2 to 9 bytes) based on instruction length
 
 #### Status Flags
 - **Z (Zero) Flag**: Set if result is zero
@@ -353,9 +353,9 @@ Conditional branch (e.g., BE):
            (BE)                        MSB                        LSB
 ```
 
-#### Maximum Length Instructions (13 bytes)
+#### Maximum Length Instructions (9 bytes)
 
-Some MOV variants can reach 13 bytes, though the most common maximum is 9 bytes.
+Some MOV variants can reach 9 bytes (MOV specifiers 0x0E and 0x12).
 
 ### Instruction Fetch and Buffering
 
@@ -753,7 +753,7 @@ This is **not implemented in the current RTL** but the instruction set is design
 
 The NeoCore16x32 architecture combines:
 - **16-bit data path** with **32-bit addresses** for compact yet capable processing
-- **Variable-length instructions** (2-13 bytes) for code density
+- **Variable-length instructions** (2-9 bytes) for code density
 - **Big-endian byte ordering** consistently throughout
 - **Von Neumann memory** with unified code/data space
 - **Dual-issue superscalar** execution for performance

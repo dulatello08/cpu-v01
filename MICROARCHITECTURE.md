@@ -200,7 +200,7 @@ end
 
 **First Instruction**:
 ```verilog
-inst_data_0 = fetch_buffer[255:152];  // Top 13 bytes
+inst_data_0 = fetch_buffer[255:152];  // Top 9 bytes (with padding to 13 bytes / 104 bits)
 spec_0 = fetch_buffer[255:248];       // Specifier
 op_0 = fetch_buffer[247:240];         // Opcode
 inst_len_0 = get_inst_length(op_0, spec_0);

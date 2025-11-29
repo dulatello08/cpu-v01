@@ -72,7 +72,7 @@ module core_top
   // Fetch Stage
   // ==========================================================================
   
-  logic [103:0] fetch_inst_data_0, fetch_inst_data_1;  // 13 bytes max
+  logic [103:0] fetch_inst_data_0, fetch_inst_data_1;  // 9 bytes max (padded to 104 bits)
   logic [3:0]   fetch_inst_len_0, fetch_inst_len_1;
   logic [31:0]  fetch_pc_0, fetch_pc_1;
   logic         fetch_valid_0, fetch_valid_1;

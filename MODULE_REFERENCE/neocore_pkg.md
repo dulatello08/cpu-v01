@@ -104,7 +104,7 @@ parameter int NUM_REGS = 16;       // 16 general-purpose registers
 typedef struct packed {
   logic        valid;           // Instruction valid
   logic [31:0] pc;              // Program counter
-  logic [103:0] inst_data;      // Up to 13 bytes (104 bits)
+  logic [103:0] inst_data;      // Up to 9 bytes (padded to 104 bits)
   logic [3:0]  inst_len;        // Instruction length in bytes
 } if_id_t;
 ```
@@ -112,7 +112,7 @@ typedef struct packed {
 **Fields**:
 - `valid`: Indicates whether the instruction is valid
 - `pc`: Program counter value for this instruction
-- `inst_data`: Big-endian instruction bytes (max 13 bytes)
+- `inst_data`: Big-endian instruction bytes (max 9 bytes, padded to 104 bits)
 - `inst_len`: Actual length of this instruction (2-13)
 
 ### ID/EX Pipeline Register

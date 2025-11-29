@@ -8,7 +8,7 @@ The NeoCore16x32 is a **dual-issue, 5-stage pipelined CPU** implemented in Syste
 
 - **Dual-Issue Superscalar Execution**: Up to 2 instructions issued per cycle
 - **5-Stage Classic RISC Pipeline**: Fetch, Decode, Execute, Memory, Writeback
-- **Variable-Length Instructions**: 2 to 13 bytes (16 to 104 bits)
+- **Variable-Length Instructions**: 2 to 9 bytes (16 to 72 bits)
 - **16-bit Data Path**: 16-bit general-purpose registers
 - **32-bit Address Space**: Full 4 GB addressable memory
 - **Big-Endian Memory Model**: Consistent byte ordering for instructions and data
@@ -110,7 +110,7 @@ Bytes 2+: Operands (registers, immediates, addresses)
 - **8 bytes**: BE, BNE, BLT, BGT, BRO (conditional branches), MOV complex modes
 - **9 bytes**: MOV 32-bit operations
 
-The maximum instruction length is **13 bytes (104 bits)** for the most complex MOV variants.
+The maximum instruction length is **9 bytes (72 bits)** for the most complex MOV variants.
 
 ## Quick Start Guide
 

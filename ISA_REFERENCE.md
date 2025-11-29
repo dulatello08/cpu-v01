@@ -17,7 +17,7 @@
 
 ## Instruction Set Overview
 
-The NeoCore16x32 instruction set consists of **26 opcodes** organized into 7 functional categories. All instructions use **big-endian byte ordering** and have **variable lengths** from 2 to 13 bytes.
+The NeoCore16x32 instruction set consists of **26 opcodes** organized into 7 functional categories. All instructions use **big-endian byte ordering** and have **variable lengths** from 2 to 9 bytes.
 
 ### Instruction Categories
 

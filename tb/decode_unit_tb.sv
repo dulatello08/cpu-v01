@@ -14,7 +14,7 @@ module decode_unit_tb;
   // Testbench signals
   logic        clk;
   logic        rst;
-  logic [103:0] inst_data;  // 13 bytes max (104 bits)
+  logic [103:0] inst_data;  // 9 bytes max (padded to 104 bits)
   logic [3:0]  inst_len;
   logic [31:0] pc;
   logic        valid_in;

@@ -127,7 +127,7 @@ Systematic analysis of control signal dependencies in core_top.sv revealed:
    - Deep loops with branches
    - Mixed instruction types
    - Back-to-back loads/stores
-   - Maximum-length instructions (13 bytes)
+   - Maximum-length instructions (9 bytes)
 2. Create instruction-specific unit tests
 3. Add assertions for X/Z detection
 4. Test memory boundary conditions

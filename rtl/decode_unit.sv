@@ -25,7 +25,7 @@ module decode_unit
   input  logic         rst,
   
   // Input instruction (big-endian)
-  input  logic [103:0] inst_data,    // Up to 13 bytes of instruction
+  input  logic [103:0] inst_data,    // Up to 9 bytes of instruction (padded to 104 bits)
   input  logic [3:0]   inst_len,     // Instruction length
   input  logic [31:0]  pc,           // Current PC
   input  logic         valid_in,     // Instruction valid

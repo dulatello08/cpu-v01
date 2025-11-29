@@ -52,7 +52,7 @@ All pipeline registers clear to invalid state on reset.
 ## Pipeline Register Types
 
 ### `if_id_t`
-- Instruction data (up to 13 bytes)
+- Instruction data (up to 9 bytes, padded to 104 bits)
 - PC
 - Valid flag
 - Instruction length
