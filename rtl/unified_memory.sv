@@ -28,7 +28,7 @@ module unified_memory #(
   // Instruction fetch port (wide fetch for variable-length instructions)
   input  logic [ADDR_WIDTH-1:0] if_addr,
   input  logic                  if_req,
-  output logic [127:0]          if_rdata,  // 16 bytes (enough for 13-byte instruction + alignment)
+  output logic [127:0]          if_rdata,  // 16 bytes (enough for 9-byte instruction + alignment)
   output logic                  if_ack,
   
   // Data access port (load/store)

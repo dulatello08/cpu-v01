@@ -200,7 +200,7 @@ end
 
 **First Instruction**:
 ```verilog
-inst_data_0 = fetch_buffer[255:152];  // Top 9 bytes (with padding to 13 bytes / 104 bits)
+inst_data_0 = fetch_buffer[255:184];  // Top 9 bytes (with padding to 72 bits)
 spec_0 = fetch_buffer[255:248];       // Specifier
 op_0 = fetch_buffer[247:240];         // Opcode
 inst_len_0 = get_inst_length(op_0, spec_0);
@@ -272,11 +272,11 @@ Decode variable-length instructions and extract control signals and operands.
 
 **Byte Parsing**:
 ```verilog
-byte0  = inst_data[103:96];  // Specifier
-byte1  = inst_data[95:88];   // Opcode
-byte2  = inst_data[87:80];   // rd (usually)
-byte3  = inst_data[79:72];   // rn or immediate byte
-// ... up to byte12
+byte0  = inst_data[71:64];   // Specifier
+byte1  = inst_data[63:56];   // Opcode
+byte2  = inst_data[55:48];   // rd (usually)
+byte3  = inst_data[47:40];   // rn or immediate byte
+// ... up to byte8
 ```
 
 ### Opcode Decoding

@@ -98,7 +98,7 @@ package neocore_pkg;
   typedef struct packed {
     logic        valid;           // Instruction valid
     logic [31:0] pc;              // Program counter for this instruction
-    logic [103:0] inst_data;      // Up to 9 bytes of instruction data (padded to 104 bits, big-endian)
+    logic [71:0] inst_data;       // Up to 9 bytes of instruction data (padded to 72 bits, big-endian)
     logic [3:0]  inst_len;        // Instruction length in bytes
   } if_id_t;
 

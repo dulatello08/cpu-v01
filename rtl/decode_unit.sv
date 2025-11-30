@@ -10,12 +10,12 @@
 // - Branch targets
 //
 // Big-Endian Instruction Format:
-//   inst_data[103:96]  = Byte 0 (Specifier)
-//   inst_data[95:88]   = Byte 1 (Opcode)
-//   inst_data[87:80]   = Byte 2 (rd or first operand byte)
-//   inst_data[79:72]   = Byte 3
+//   inst_data[71:64]   = Byte 0 (Specifier)
+//   inst_data[63:56]   = Byte 1 (Opcode)
+//   inst_data[55:48]   = Byte 2 (rd or first operand byte)
+//   inst_data[47:40]   = Byte 3
 //   ...
-//   inst_data[7:0]     = Byte 12 (last byte for longest instructions)
+//   inst_data[7:0]     = Byte 8 (last byte for longest instructions)
 //
 
 module decode_unit
@@ -25,7 +25,7 @@ module decode_unit
   input  logic         rst,
   
   // Input instruction (big-endian)
-  input  logic [103:0] inst_data,    // Up to 9 bytes of instruction (padded to 104 bits)
+  input  logic [71:0]  inst_data,    // Instruction data (up to 9 bytes)
   input  logic [3:0]   inst_len,     // Instruction length
   input  logic [31:0]  pc,           // Current PC
   input  logic         valid_in,     // Instruction valid
@@ -66,22 +66,18 @@ module decode_unit
   
   // Extract individual bytes from instruction data
   // Big-endian: MSB bytes at higher bit positions
-  logic [7:0] byte0, byte1, byte2, byte3, byte4, byte5, byte6, byte7, byte8, byte9, byte10, byte11, byte12;
+  logic [7:0] byte0, byte1, byte2, byte3, byte4, byte5, byte6, byte7, byte8;
   
   always_comb begin
-    byte0  = inst_data[103:96];  // Specifier
-    byte1  = inst_data[95:88];   // Opcode
-    byte2  = inst_data[87:80];   // rd (for most instructions)
-    byte3  = inst_data[79:72];   // rn or immediate byte
-    byte4  = inst_data[71:64];   // immediate byte or rn1
-    byte5  = inst_data[63:56];   // address/immediate byte
-    byte6  = inst_data[55:48];   // address/immediate byte
-    byte7  = inst_data[47:40];   // address/immediate byte
-    byte8  = inst_data[39:32];   // address/immediate byte
-    byte9  = inst_data[31:24];   // address/immediate byte (for longest instructions)
-    byte10 = inst_data[23:16];
-    byte11 = inst_data[15:8];
-    byte12 = inst_data[7:0];
+    byte0  = inst_data[71:64];   // Specifier
+    byte1  = inst_data[63:56];   // Opcode
+    byte2  = inst_data[55:48];   // rd (for most instructions)
+    byte3  = inst_data[47:40];   // rn or immediate byte
+    byte4  = inst_data[39:32];   // immediate byte or rn1
+    byte5  = inst_data[31:24];   // address/immediate byte
+    byte6  = inst_data[23:16];   // address/immediate byte
+    byte7  = inst_data[15:8];    // address/immediate byte
+    byte8  = inst_data[7:0];     // address/immediate byte (for longest instructions)
   end
   
   // ============================================================================
