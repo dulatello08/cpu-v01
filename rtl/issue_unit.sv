@@ -82,7 +82,7 @@ module issue_unit
     // Branch restriction: branches must issue alone
     branch_restriction = inst0_is_branch || inst1_is_branch;
     
-    // Halt restriction: HLT must issue alone (CRITICAL FIX)
+    // Halt restriction: HLT must issue alone
     halt_restriction = inst0_is_halt || inst1_is_halt;
     
     // Multiply restriction: UMULL/SMULL cannot dual-issue (implementation choice)

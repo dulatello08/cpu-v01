@@ -406,6 +406,7 @@ data_dependency = inst0_rd_we &&
 branch_restriction = inst0_is_branch || inst1_is_branch;
 branch_restriction = inst0_is_branch || inst1_is_branch;
 mul_restriction = (inst0_type == ITYPE_MUL) || (inst1_type == ITYPE_MUL);
+halt_restriction = inst0_is_halt || inst1_is_halt;
 // Dual-write restriction
 if (inst0_rd_we && inst0_rd2_we) write_port_conflict = 1'b1;
 ```
@@ -419,6 +420,7 @@ issue_inst1 = inst0_valid && inst1_valid &&
               !mem_port_conflict &&
               !write_port_conflict &&
               !branch_restriction &&
+              !halt_restriction &&
               !data_dependency &&
               !mul_restriction;
 dual_issue = issue_inst0 && issue_inst1;

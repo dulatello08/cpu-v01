@@ -74,6 +74,7 @@ The CPU can issue two instructions simultaneously only when **all** of the follo
 3. **No write conflicts**: Both instructions don't write to the same register
 4. **No branch instructions**: Branches must issue alone
 5. **No multiply long**: UMULL/SMULL cannot dual-issue (implementation choice)
+6. **No halt**: HLT must issue alone
 
 When dual-issue is not possible, only the first instruction is issued, and the second is held for the next cycle.
 
@@ -159,7 +160,7 @@ cd sv
 make sim              # Run core integration test
 make alu_test         # Run ALU unit test
 make decode_test      # Run decode unit test
-make all_tests        # Run all testbenches
+make all-tests        # Run all testbenches
 ```
 
 #### Waveform Viewing

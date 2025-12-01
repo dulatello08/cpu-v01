@@ -86,7 +86,7 @@ Buffer bit positions (big-endian):
 
 **First Instruction (inst_data_0)**:
 ```verilog
-inst_data_0 = fetch_buffer[255:152];  // Top 9 bytes (with padding to 104 bits)
+inst_data_0 = fetch_buffer[255:184];  // Top 9 bytes (with padding to 72 bits)
 inst_len_0 = get_inst_length(opcode_0, specifier_0);
 pc_0 = buffer_pc;
 valid_0 = (buffer_valid >= inst_len_0) && (inst_len_0 > 0);
@@ -145,15 +145,15 @@ Stall:         pc_next = pc (no change)
 
 ##### Byte Extraction (Big-Endian)
 
-The decode_unit extracts individual bytes from the 104-bit instruction data:
+The decode_unit extracts individual bytes from the 72-bit instruction data:
 
 ```verilog
-byte0  = inst_data[103:96];  // Specifier
-byte1  = inst_data[95:88];   // Opcode
-byte2  = inst_data[87:80];   // rd or first operand
-byte3  = inst_data[79:72];   // rn or immediate/address byte
-byte4  = inst_data[71:64];   // rn1 or immediate/address byte
-byte5  = inst_data[63:56];   // Address/immediate byte
+byte0  = inst_data[71:64];   // Specifier
+byte1  = inst_data[63:56];   // Opcode
+byte2  = inst_data[55:48];   // rd or first operand
+byte3  = inst_data[47:40];   // rn or immediate/address byte
+byte4  = inst_data[39:32];   // rn1 or immediate/address byte
+byte5  = inst_data[31:24];   // Address/immediate byte
 ...
 byte12 = inst_data[7:0];     // Last byte (for longest instructions)
 ```
@@ -620,7 +620,7 @@ Data flows between pipeline stages through registers that hold the pipeline stat
 typedef struct packed {
   logic        valid;        // Instruction valid
   logic [31:0] pc;           // Program counter
-  logic [103:0] inst_data;   // Up to 9 bytes of instruction (with padding to 104 bits)
+  logic [71:0] inst_data;    // Up to 9 bytes of instruction (with padding to 72 bits)
   logic [3:0]  inst_len;     // Length in bytes
 } if_id_t;
 ```

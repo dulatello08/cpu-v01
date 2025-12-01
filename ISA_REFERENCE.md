@@ -683,7 +683,7 @@ Full 32-bit multiply operations that produce results in two registers.
 
 **Operation**: `{rd, rn1} = rd * rn` (unsigned 16x16 → 32)  
 **Opcode**: 0x10  
-**Length**: 4 bytes  
+**Length**: 5 bytes  
 **Flags**: Updates Z and V based on 32-bit result
 
 ```
@@ -714,7 +714,7 @@ Concrete:
 
 **Operation**: `{rd, rn1} = signed(rd) * signed(rn)` (signed 16x16 → 32)  
 **Opcode**: 0x11  
-**Length**: 4 bytes  
+**Length**: 5 bytes  
 **Flags**: Updates Z and V
 
 ```

@@ -364,7 +364,7 @@ The fetch_unit maintains a **32-byte instruction buffer** to handle variable-len
 1. Fetch 16 bytes from memory each cycle (when buffer needs refilling)
 2. Extract specifier and opcode from top of buffer
 3. Calculate instruction length using get_inst_length()
-4. Extract full instruction bytes (up to 13)
+4. Extract full instruction bytes (up to 9)
 5. Pre-decode second instruction for dual-issue
 6. Consume valid instructions (shift buffer)
 
