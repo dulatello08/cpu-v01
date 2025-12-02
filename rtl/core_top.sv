@@ -82,13 +82,23 @@ module core_top
   logic [31:0]  fetch_pc_1;
   logic         fetch_valid_1;
   
+  // Replay Logic Removed
+  // The fetch unit now receives 'consumed_count' from the issue unit
+  // and corrects the PC internally if fewer instructions were consumed than fetched.
+  
+  // Combined Branch Control
+  logic        real_branch_taken;
+  logic [31:0] real_branch_target;
+  
+  assign real_branch_taken = branch_taken;
+  assign real_branch_target = branch_target;
+
   fetch_unit fetch (
     .clk(clk),
     .rst(rst),
-    .branch_taken(branch_taken),
-    .branch_target(branch_target),
+    .branch_taken(real_branch_taken),
+    .branch_target(real_branch_target),
     .stall(stall_pipeline),
-    .dual_issue(dual_issue),
     .mem_addr(mem_if_addr),
     .mem_req(mem_if_req),
     .mem_rdata(mem_if_rdata),
@@ -100,7 +110,12 @@ module core_top
     .inst_data_1(fetch_inst_data_1),
     .inst_len_1(fetch_inst_len_1),
     .pc_1(fetch_pc_1),
-    .valid_1(fetch_valid_1)
+    .valid_1(fetch_valid_1),
+    .consumed_count(consumed_count),
+    .id_inst_len_0(if_id_out_0.inst_len),
+    .id_inst_len_1(if_id_out_1.inst_len),
+    .id_pc(if_id_out_0.pc),
+    .id_valid(if_id_out_0.valid)
   );
   
   // ==========================================================================
@@ -237,6 +252,7 @@ module core_top
   // ==========================================================================
   
   logic issue_inst0, issue_inst1, dual_issue;
+  logic [1:0] consumed_count;
   
   issue_unit issue (
     .clk(clk),
@@ -265,7 +281,8 @@ module core_top
     .inst1_rd2_we(decode_rd2_we_1),
     .issue_inst0(issue_inst0),
     .issue_inst1(issue_inst1),
-    .dual_issue(dual_issue)
+    .dual_issue(dual_issue),
+    .consumed_count(consumed_count)
   );
   
   assign dual_issue_active = dual_issue;

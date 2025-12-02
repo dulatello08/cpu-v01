@@ -62,7 +62,8 @@ module unified_memory #(
     end else if (if_req) begin
       // Fetch 16 bytes starting at if_addr (big-endian)
       // This provides enough bandwidth for any instruction up to 9 bytes
-      // plus alignment slack
+      // plus alignment slack.
+      // Note: if_addr does NOT need to be 16-byte aligned.
       if (if_addr < (MEM_SIZE_BYTES - 16)) begin
         // Big-endian: first byte at if_addr goes to MSB position
         if_rdata <= {

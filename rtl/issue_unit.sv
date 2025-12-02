@@ -45,7 +45,10 @@ module issue_unit
   // Issue decision
   output logic        issue_inst0,    // Issue instruction 0
   output logic        issue_inst1,    // Issue instruction 1 (dual-issue)
-  output logic        dual_issue      // Both instructions issued this cycle
+  output logic        dual_issue,     // Both instructions issued this cycle
+  
+  // Consumed Count Output
+  output logic [1:0]  consumed_count  // Number of instructions actually issued (0, 1, or 2)
 );
 
   // ============================================================================
@@ -161,6 +164,15 @@ module issue_unit
       issue_inst0 = 1'b0;
       issue_inst1 = 1'b0;
       dual_issue = 1'b0;
+    end
+    
+    // Calculate consumed count
+    if (dual_issue) begin
+      consumed_count = 2'd2;
+    end else if (issue_inst0) begin
+      consumed_count = 2'd1;
+    end else begin
+      consumed_count = 2'd0;
     end
   end
 

@@ -126,21 +126,36 @@ module core_unified_tb;
     
     // Load program (big-endian)
     // MOV R1, #0x0005 at 0x00
-    memory.mem[32'h00] = 8'h00;  // MOV spec (immediate)
-    memory.mem[32'h01] = 8'h09;  // MOV op
-    memory.mem[32'h02] = 8'h01;  // rd = R1
-    memory.mem[32'h03] = 8'h00;  // imm high
-    memory.mem[32'h04] = 8'h05;  // imm low (0x0005)
+    // New NOP at 0x00
+    memory.mem[32'h00] = 8'h00;  // NOP spec
+    memory.mem[32'h01] = 8'h00;  // NOP op
+
+    // NOP at 0x02
+    memory.mem[32'h02] = 8'h00;  // NOP spec
+    memory.mem[32'h03] = 8'h00;  // NOP op
     
-    // MOV R2, R1 at 0x05 (register-to-register copy)
-    memory.mem[32'h05] = 8'h02;  // MOV spec (register)
-    memory.mem[32'h06] = 8'h09;  // MOV op
-    memory.mem[32'h07] = 8'h02;  // rd = R2 (destination)
-    memory.mem[32'h08] = 8'h01;  // rn = R1 (source)
+    // NOP at 0x04
+    memory.mem[32'h04] = 8'h00;  // NOP spec
+    memory.mem[32'h05] = 8'h00;  // NOP op
+
+    // MOV R1, #0x0005 at 0x06
+    memory.mem[32'h06] = 8'h00;  // MOV spec (immediate)
+    memory.mem[32'h07] = 8'h09;  // MOV op
+    memory.mem[32'h08] = 8'h01;  // rd = R1
+    memory.mem[32'h09] = 8'h00;  // imm high
+    memory.mem[32'h0A] = 8'h05;   // imm low (0x0005)
     
-    // HLT at 0x09
-    memory.mem[32'h09] = 8'h00;  // HLT spec
-    memory.mem[32'h0A] = 8'h12;  // HLT op
+    // MOV R2, R1 at 0x0B (register-to-register copy)
+    // This depends on R1, so it CANNOT dual issue with the previous instruction.
+    // This forces the issue unit to split them, testing the replay logic.
+    memory.mem[32'h0B] = 8'h02;  // MOV spec (register)
+    memory.mem[32'h0C] = 8'h09;  // MOV op
+    memory.mem[32'h0D] = 8'h02;  // rd = R2 (destination)
+    memory.mem[32'h0E] = 8'h01;   // rn = R1 (source)
+    
+    // HLT at 0x0F
+    memory.mem[32'h0F] = 8'h00;  // HLT spec
+    memory.mem[32'h10] = 8'h12;  // HLT op
     
     $display("Program loaded:");
     $display("  0x00: MOV R1, #0x0005");
