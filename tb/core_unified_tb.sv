@@ -214,12 +214,12 @@ module core_unified_tb;
                memory.mem[current_pc+2], memory.mem[current_pc+3],
                memory.mem[current_pc+4], memory.mem[current_pc+5],
                memory.mem[current_pc+6]);
-//      $display("          FetchBuf: buffer_valid=%d buffer_pc=0x%h consumed=%d",
-//               dut.fetch.buffer_valid, dut.fetch.buffer_pc, dut.fetch.consumed_bytes);
-//      $display("                    buffer[1:0]=0x%02h%02h spec_0=0x%02h op_0=0x%02h len0=%d",
-//               dut.fetch.fetch_buffer[1], dut.fetch.fetch_buffer[0], dut.fetch.spec_0, dut.fetch.op_0, dut.fetch_inst_len_0);
+//      $display("          FetchState: state=%d current_pc=0x%h consumed=%d",
+//               dut.fetch.state, dut.fetch.current_pc, dut.fetch.consumed_count);
+//      $display("                    block[1:0]=0x%02h%02h spec_0=0x%02h op_0=0x%02h len0=%d",
+//               dut.fetch.current_block[1], dut.fetch.current_block[0], dut.fetch.spec_0, dut.fetch.op_0, dut.fetch.inst_len_0);
 //      $display("                    spec_1=0x%02h op_1=0x%02h len1=%d",
-//               dut.fetch.spec_1, dut.fetch.op_1, dut.fetch_inst_len_1);
+//               dut.fetch.spec_1, dut.fetch.op_1, dut.fetch.inst_len_1);
       $display("          Fetch: valid0=%b valid1=%b dual_issue=%b",
                dut.fetch_valid_0, dut.fetch_valid_1, dut.dual_issue_active);
       $display("          IF/ID0: valid=%b pc=0x%h opcode=0x%02h spec=0x%02h",

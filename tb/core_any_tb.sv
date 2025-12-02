@@ -125,19 +125,19 @@ module core_any_tb;
   // Detailed cycle-by-cycle logging
   always @(posedge clk) begin
     if (debug_enabled && !rst) begin
-      $display("Cycle %0d: PC=%h (FetchPC0=%h) Halt=%b BufferValid=%0d Spec0=%h Op0=%h Len0=%0d Spec1=%h Op1=%h Len1=%0d", 
+      $display("Cycle %0d: PC=%h (FetchPC0=%h) Halt=%b State=%d Spec0=%h Op0=%h Len0=%0d Spec1=%h Op1=%h Len1=%0d", 
                cycle_count, dut.current_pc, dut.fetch_pc_0, dut.halted,
-               dut.fetch.buffer_valid,
+               dut.fetch.state,
                dut.fetch.spec_0, dut.fetch.op_0, dut.fetch.inst_len_0,
                dut.fetch.spec_1, dut.fetch.op_1, dut.fetch.inst_len_1);
-      $display("         Consumed=%0d BufferPC=%h Valid0=%b Valid1=%b DualIssue=%b (from issue=%b) MemReq=%b MemAddr=%h",
-               dut.fetch.consumed_bytes, dut.fetch.buffer_pc,
+      $display("         Consumed=%0d CurrentPC=%h Valid0=%b Valid1=%b DualIssue=%b (from issue=%b) MemReq=%b MemAddr=%h",
+               dut.fetch.consumed_count, dut.fetch.current_pc,
                dut.fetch.valid_0, dut.fetch.valid_1, dut.dual_issue,
                dut.issue.dual_issue,
                dut.fetch.mem_req, dut.fetch.mem_addr);
-      $display("         Buffer[31:0]=%02h %02h %02h %02h", 
-               dut.fetch.fetch_buffer[0], dut.fetch.fetch_buffer[1],
-               dut.fetch.fetch_buffer[2], dut.fetch.fetch_buffer[3]);
+      $display("         Block[0-3]=%02h %02h %02h %02h", 
+               dut.fetch.current_block[0], dut.fetch.current_block[1],
+               dut.fetch.current_block[2], dut.fetch.current_block[3]);
     end
   end
   
