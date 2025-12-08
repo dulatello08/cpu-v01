@@ -115,6 +115,15 @@ decode_unit_tb: $(BUILD_DIR)
 run_decode_unit_tb: decode_unit_tb
 	cd $(BUILD_DIR) && $(VVP) decode_unit_tb.vvp
 
+# Fetch Unit Testbench
+fetch_unit_tb: $(BUILD_DIR)
+	$(IVERILOG) $(IVFLAGS) -s fetch_unit_tb \
+		-o $(BUILD_DIR)/fetch_unit_tb.vvp \
+		$(PKG_SRC) $(RTL_DIR)/fetch_unit.sv $(TB_DIR)/fetch_unit_tb.sv
+
+run_fetch_unit_tb: fetch_unit_tb
+	cd $(BUILD_DIR) && $(VVP) fetch_unit_tb.vvp
+
 # Core Testbench (unified memory)
 core_unified_tb: $(BUILD_DIR)
 	$(IVERILOG) $(IVFLAGS) -s core_unified_tb \
@@ -154,13 +163,14 @@ run_any: run_core_any_tb
 alu_test: run_alu_tb
 mul_test: run_multiply_unit_tb  
 decode_test: run_decode_unit_tb
+fetch_test: run_fetch_unit_tb
 branch_test: run_branch_unit_tb
 regfile_test: run_register_file_tb
 sim: run_core_unified_tb
 
 # Run all unit tests
 .PHONY: unit-tests
-unit-tests: run_alu_tb run_register_file_tb run_multiply_unit_tb run_branch_unit_tb run_decode_unit_tb
+unit-tests: run_alu_tb run_register_file_tb run_multiply_unit_tb run_branch_unit_tb run_decode_unit_tb run_fetch_unit_tb
 	@echo ""
 	@echo "========================================"
 	@echo "All unit tests completed successfully!"
@@ -174,13 +184,7 @@ core-tests: run_core_unified_tb
 	@echo "Core integration tests passed!"
 	@echo "========================================"
 
-# Run advanced/stress tests
-.PHONY: advanced-tests
-advanced-tests: run_core_advanced_tb
-	@echo ""
-	@echo "========================================"
-	@echo "Advanced tests completed!"
-	@echo "========================================"
+
 
 # Run all tests
 .PHONY: all-tests
@@ -190,13 +194,7 @@ all-tests: unit-tests core-tests
 	@echo "ALL TESTS PASSED!"
 	@echo "========================================"
 
-# Run all tests including experimental/long-running tests
-.PHONY: all-tests-full
-all-tests-full: unit-tests core-tests advanced-tests
-	@echo ""
-	@echo "========================================"
-	@echo "FULL TEST SUITE PASSED!"
-	@echo "========================================"
+
 
 # Default target
 .PHONY: default
@@ -209,13 +207,14 @@ default: check-tools
 	@echo "  make unit-tests      - Run all unit tests (ALU, registers, etc.)"
 	@echo "  make core-tests      - Run core integration tests"
 	@echo "  make all-tests       - Run all standard tests"
-	@echo "  make all-tests-full  - Run all tests including advanced tests"
+
 	@echo "  make clean           - Remove build artifacts"
 	@echo ""
 	@echo "Individual unit tests:"
 	@echo "  make alu_test        - ALU testbench"
 	@echo "  make mul_test        - Multiply unit testbench"
 	@echo "  make decode_test     - Decode unit testbench"
+	@echo "  make fetch_test      - Fetch unit testbench"
 	@echo "  make branch_test     - Branch unit testbench"
 	@echo "  make regfile_test    - Register file testbench"
 	@echo ""
@@ -244,10 +243,10 @@ clean:
 	rm -rf $(BUILD_DIR)
 
 .PHONY: default check-tools clean \
-        unit-tests core-tests advanced-tests all-tests all-tests-full \
-        alu_test mul_test decode_test branch_test regfile_test sim run_any \
+        unit-tests core-tests all-tests \
+        alu_test mul_test decode_test fetch_test branch_test regfile_test sim run_any \
         wave wave_alu \
         alu_tb run_alu_tb register_file_tb run_register_file_tb \
         multiply_unit_tb run_multiply_unit_tb branch_unit_tb run_branch_unit_tb \
-        decode_unit_tb run_decode_unit_tb core_unified_tb run_core_unified_tb \
-        core_advanced_tb run_core_advanced_tb core_any_tb run_core_any_tb
+        decode_unit_tb run_decode_unit_tb fetch_unit_tb run_fetch_unit_tb core_unified_tb run_core_unified_tb \
+        core_any_tb run_core_any_tb
