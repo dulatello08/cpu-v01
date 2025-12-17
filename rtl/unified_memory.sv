@@ -202,7 +202,7 @@ module unified_memory #(
                 // Optional: Initialize to zero or specific pattern if file missing
                 // In simulation this might warn if file not found, which is fine.
                 // For hardware, we want this to be picked up.
-                $readmemh($sformatf("bank%0d.mem", i), mem); 
+                //$readmemh($sformatf("bank%0d.mem", i), mem); 
             end
         end
     endgenerate

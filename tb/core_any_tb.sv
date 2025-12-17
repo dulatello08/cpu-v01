@@ -12,6 +12,7 @@
 // Or using Makefile:
 //   make run_core_any PROGRAM=input.hex
 //
+//
 
 `timescale 1ns/1ps
 
@@ -60,7 +61,7 @@ module core_any_tb;
   );
   
   // Core instance
-  core_top dut (
+  cpu_core dut (
     .clk(clk),
     .rst(rst),
     .mem_if_addr(mem_if_addr),
@@ -175,7 +176,7 @@ module core_any_tb;
     
     // Initialize all memory to zero
     for (int i = 0; i < 65536; i++) begin
-      memory.mem[i] = 8'h00;
+      write_byte(i, 8'h00);
     end
     
     // Load program from hex file
@@ -189,7 +190,7 @@ module core_any_tb;
     bytes_loaded = 0;
     while (!$feof(fd)) begin
       if ($fscanf(fd, "%h", byte_val) == 1) begin
-        memory.mem[addr] = byte_val[7:0];
+        write_byte(addr, byte_val[7:0]);
         addr = addr + 1;
         bytes_loaded = bytes_loaded + 1;
       end
@@ -242,5 +243,65 @@ module core_any_tb;
       end
     join_any
   end
+
+  // Helper task to write a byte to unified memory
+  task write_byte(input [31:0] addr, input [7:0] data);
+    logic [3:0] bank_sel;
+    logic [31:0] bank_addr;
+    begin
+      bank_sel = addr[3:0];
+      bank_addr = addr[31:4]; // addr / 16
+      
+      // Access the specific bank's memory array using hierarchical reference
+      case (bank_sel)
+        4'h0: memory.bank_gen[0].mem[bank_addr] = data;
+        4'h1: memory.bank_gen[1].mem[bank_addr] = data;
+        4'h2: memory.bank_gen[2].mem[bank_addr] = data;
+        4'h3: memory.bank_gen[3].mem[bank_addr] = data;
+        4'h4: memory.bank_gen[4].mem[bank_addr] = data;
+        4'h5: memory.bank_gen[5].mem[bank_addr] = data;
+        4'h6: memory.bank_gen[6].mem[bank_addr] = data;
+        4'h7: memory.bank_gen[7].mem[bank_addr] = data;
+        4'h8: memory.bank_gen[8].mem[bank_addr] = data;
+        4'h9: memory.bank_gen[9].mem[bank_addr] = data;
+        4'hA: memory.bank_gen[10].mem[bank_addr] = data;
+        4'hB: memory.bank_gen[11].mem[bank_addr] = data;
+        4'hC: memory.bank_gen[12].mem[bank_addr] = data;
+        4'hD: memory.bank_gen[13].mem[bank_addr] = data;
+        4'hE: memory.bank_gen[14].mem[bank_addr] = data;
+        4'hF: memory.bank_gen[15].mem[bank_addr] = data;
+      endcase
+    end
+  endtask
+
+  // Helper function to read a byte from unified memory (for debug)
+  function logic [7:0] read_byte(input [31:0] addr);
+    logic [3:0] bank_sel;
+    logic [31:0] bank_addr;
+    begin
+      bank_sel = addr[3:0];
+      bank_addr = addr[31:4];
+      
+      case (bank_sel)
+        4'h0: return memory.bank_gen[0].mem[bank_addr];
+        4'h1: return memory.bank_gen[1].mem[bank_addr];
+        4'h2: return memory.bank_gen[2].mem[bank_addr];
+        4'h3: return memory.bank_gen[3].mem[bank_addr];
+        4'h4: return memory.bank_gen[4].mem[bank_addr];
+        4'h5: return memory.bank_gen[5].mem[bank_addr];
+        4'h6: return memory.bank_gen[6].mem[bank_addr];
+        4'h7: return memory.bank_gen[7].mem[bank_addr];
+        4'h8: return memory.bank_gen[8].mem[bank_addr];
+        4'h9: return memory.bank_gen[9].mem[bank_addr];
+        4'hA: return memory.bank_gen[10].mem[bank_addr];
+        4'hB: return memory.bank_gen[11].mem[bank_addr];
+        4'hC: return memory.bank_gen[12].mem[bank_addr];
+        4'hD: return memory.bank_gen[13].mem[bank_addr];
+        4'hE: return memory.bank_gen[14].mem[bank_addr];
+        4'hF: return memory.bank_gen[15].mem[bank_addr];
+        default: return 8'h00;
+      endcase
+    end
+  endfunction
 
 endmodule
