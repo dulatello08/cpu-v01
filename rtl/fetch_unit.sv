@@ -180,7 +180,8 @@ module fetch_unit
     pc_1 = current_pc;
     
     // Data is valid if we have an Ack in REQ or WAIT_ACK state
-    if (((state == STATE_REQ && mem_ack) || (state == STATE_WAIT_ACK && mem_ack)) && !branch_taken) begin
+    // AND if we are not about to correct the PC (flush speculative fetch)
+    if (((state == STATE_REQ && mem_ack) || (state == STATE_WAIT_ACK && mem_ack)) && !branch_taken && (current_pc == correct_pc)) begin
       // Inst 0
       if (len_0 > 0) begin
         valid_0 = 1'b1;

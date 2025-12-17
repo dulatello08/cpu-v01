@@ -1,612 +1,127 @@
 //
 // core_top.sv
-// NeoCore 16x32 CPU - Top-Level Core Integration
+// NeoCore 16x32 CPU - Synthesizable Top Level
 //
-// Integrates all pipeline stages for a dual-issue, 5-stage pipelined CPU.
-// Implements hazard detection, forwarding, and branch handling.
-//
-// Von Neumann Architecture:
-//   - Single unified memory for instructions and data
-//   - Big-endian byte ordering
-//   - 128-bit instruction fetch port (16 bytes per cycle)
-//   - 32-bit data access port
-//
-// Pipeline stages: IF -> ID -> EX -> MEM -> WB
-// Dual-issue: Up to 2 instructions can be issued per cycle.
+// Wraps the CPU Core and Unified Memory for physical implementation.
+// Maps basic IO (LEDs, Buttons) to memory addresses or status registers.
 //
 
-module core_top
-  import neocore_pkg::*;
-(
-  input  logic        clk,
-  input  logic        rst,
-  
-  // Unified memory interface - Instruction fetch port
-  output logic [31:0]  mem_if_addr,
-  output logic         mem_if_req,
-  input  logic [127:0] mem_if_rdata,   // 16 bytes for variable-length instructions
-  input  logic         mem_if_ack,
-  
-  // Unified memory interface - Data access port
-  output logic [31:0] mem_data_addr,
-  output logic [31:0] mem_data_wdata,
-  output logic [1:0]  mem_data_size,
-  output logic        mem_data_we,
-  output logic        mem_data_req,
-  input  logic [31:0] mem_data_rdata,
-  input  logic        mem_data_ack,
-  
-  // Status signals
-  output logic        halted,
-  output logic [31:0] current_pc,
-  output logic        dual_issue_active
+module core_top (
+  input  logic       clk_25mhz,      // 25 MHz system clock
+  input  logic [6:0] btn,            // Buttons (vector to match LPF)
+  output logic [7:0] led,            // onboard LEDs
+  output logic       wifi_en         // WiFi Enable (Active High) - Drive Low to disable ESP32
 );
 
   // ==========================================================================
-  // CPU State Registers
+  // WiFi Control
   // ==========================================================================
-  
-  logic        z_flag, v_flag;
-  logic        z_flag_next, v_flag_next;
-  
-  always_ff @(posedge clk) begin
-    if (rst) begin
-      z_flag <= 1'b0;
-      v_flag <= 1'b0;
-    end else begin
-      if (wb_z_flag_update) z_flag <= wb_z_flag_value;
-      if (wb_v_flag_update) v_flag <= wb_v_flag_value;
-    end
-  end
-  
-  // ==========================================================================
-  // Pipeline Control Signals
-  // ==========================================================================
-  
-  logic stall_pipeline;
-  logic flush_if, flush_id, flush_ex;
-  logic branch_taken;
-  logic [31:0] branch_target;
-  
-  // ==========================================================================
-  // Fetch Stage
-  // ==========================================================================
-  
-  logic [71:0]  fetch_inst_data_0;  // 9 bytes max (padded to 72 bits)
-  logic [3:0]   fetch_inst_len_0;
-  logic [31:0]  fetch_pc_0;
-  logic         fetch_valid_0;
-  
-  logic [71:0]  fetch_inst_data_1;  // 9 bytes max (padded to 72 bits)
-  logic [3:0]   fetch_inst_len_1;
-  logic [31:0]  fetch_pc_1;
-  logic         fetch_valid_1;
-  
-  // Replay Logic Removed
-  // The fetch unit now receives 'consumed_count' from the issue unit
-  // and corrects the PC internally if fewer instructions were consumed than fetched.
-  
-  // Combined Branch Control
-  logic        real_branch_taken;
-  logic [31:0] real_branch_target;
-  
-  assign real_branch_taken = branch_taken;
-  assign real_branch_target = branch_target;
+  // Disable ESP32 to prevent pin interference
+  assign wifi_en = 1'b0;
 
-  fetch_unit fetch (
-    .clk(clk),
+  // ==========================================================================
+  // Reset Generation
+  // ==========================================================================
+  
+  logic rst;
+  assign rst = ~btn[0]; // Invert active-low button to active-high internal reset
+
+  // ==========================================================================
+  // Internal Wires
+  // ==========================================================================
+
+  // CPU -> Memory Interface
+  logic [31:0]  cpu_if_addr;
+  logic         cpu_if_req;
+  logic [127:0] cpu_if_rdata;
+  logic         cpu_if_ack;
+
+  logic [31:0]  cpu_data_addr;
+  logic [31:0]  cpu_data_wdata;
+  logic [1:0]   cpu_data_size;
+  logic         cpu_data_we;
+  logic         cpu_data_req;
+  logic [31:0]  cpu_data_rdata;
+  logic         cpu_data_ack;
+
+  // CPU Status
+  logic        cpu_halted;
+  logic [31:0] cpu_current_pc;
+  logic        cpu_dual_issue_active;
+
+  // ==========================================================================
+  // Heartbeat Counter
+  // ==========================================================================
+  logic [24:0] heartbeat;
+  always_ff @(posedge clk_25mhz) begin
+    heartbeat <= heartbeat + 1;
+  end
+
+  // ==========================================================================
+  // CPU Core Instance
+  // ==========================================================================
+
+  cpu_core core (
+    .clk(clk_25mhz),
     .rst(rst),
-    .branch_taken(real_branch_taken),
-    .branch_target(real_branch_target),
-    .stall(stall_pipeline),
-    .mem_addr(mem_if_addr),
-    .mem_req(mem_if_req),
-    .mem_rdata(mem_if_rdata),
-    .mem_ack(mem_if_ack),
-    .inst_data_0(fetch_inst_data_0),
-    .inst_len_0(fetch_inst_len_0),
-    .pc_0(fetch_pc_0),
-    .valid_0(fetch_valid_0),
-    .inst_data_1(fetch_inst_data_1),
-    .inst_len_1(fetch_inst_len_1),
-    .pc_1(fetch_pc_1),
-    .valid_1(fetch_valid_1),
-    .consumed_count(consumed_count),
-    .id_inst_len_0(if_id_out_0.inst_len),
-    .id_inst_len_1(if_id_out_1.inst_len),
-    .id_pc(if_id_out_0.pc),
-    .id_valid(if_id_out_0.valid)
-  );
-  
-  // ==========================================================================
-  // IF/ID Pipeline Register
-  // ==========================================================================
-  
-  if_id_t if_id_in_0, if_id_out_0;
-  if_id_t if_id_in_1, if_id_out_1;
-  
-  always_comb begin
-    if_id_in_0.valid = fetch_valid_0;
-    if_id_in_0.pc = fetch_pc_0;
-    if_id_in_0.inst_data = fetch_inst_data_0;
-    if_id_in_0.inst_len = fetch_inst_len_0;
     
-    if_id_in_1.valid = fetch_valid_1;
-    if_id_in_1.pc = fetch_pc_1;
-    if_id_in_1.inst_data = fetch_inst_data_1;
-    if_id_in_1.inst_len = fetch_inst_len_1;
-  end
-  
-  if_id_reg if_id_reg_0 (
-    .clk(clk),
-    .rst(rst),
-    .stall(stall_pipeline),
-    .flush(flush_id || branch_taken),
-    .data_in(if_id_in_0),
-    .data_out(if_id_out_0)
-  );
-  
-  if_id_reg if_id_reg_1 (
-    .clk(clk),
-    .rst(rst),
-    .stall(stall_pipeline),
-    .flush(flush_id || branch_taken),
-    .data_in(if_id_in_1),
-    .data_out(if_id_out_1)
-  );
-  
-  // ==========================================================================
-  // Decode Stage
-  // ==========================================================================
-  
-  // Decode outputs for instruction 0
-  logic        decode_valid_0;
-  opcode_e     decode_opcode_0;
-  logic [7:0]  decode_specifier_0;
-  itype_e      decode_itype_0;
-  alu_op_e     decode_alu_op_0;
-  logic [3:0]  decode_rs1_addr_0, decode_rs2_addr_0;
-  logic [3:0]  decode_rd_addr_0, decode_rd2_addr_0;
-  logic [31:0] decode_immediate_0, decode_mem_addr_0, decode_branch_target_0;
-  logic        decode_rd_we_0, decode_rd2_we_0;
-  logic        decode_mem_read_0, decode_mem_write_0;
-  mem_size_e   decode_mem_size_0;
-  logic        decode_is_branch_0, decode_is_jsr_0, decode_is_rts_0, decode_is_halt_0;
-  
-  decode_unit decode_0 (
-    .clk(clk),
-    .rst(rst),
-    .inst_data(if_id_out_0.inst_data),
-    .inst_len(if_id_out_0.inst_len),
-    .pc(if_id_out_0.pc),
-    .valid_in(if_id_out_0.valid),
-    .valid_out(decode_valid_0),
-    .opcode(decode_opcode_0),
-    .specifier(decode_specifier_0),
-    .itype(decode_itype_0),
-    .alu_op(decode_alu_op_0),
-    .rs1_addr(decode_rs1_addr_0),
-    .rs2_addr(decode_rs2_addr_0),
-    .rd_addr(decode_rd_addr_0),
-    .rd2_addr(decode_rd2_addr_0),
-    .immediate(decode_immediate_0),
-    .mem_addr(decode_mem_addr_0),
-    .branch_target(decode_branch_target_0),
-    .rd_we(decode_rd_we_0),
-    .rd2_we(decode_rd2_we_0),
-    .mem_read(decode_mem_read_0),
-    .mem_write(decode_mem_write_0),
-    .mem_size(decode_mem_size_0),
-    .is_branch(decode_is_branch_0),
-    .is_jsr(decode_is_jsr_0),
-    .is_rts(decode_is_rts_0),
-    .is_halt(decode_is_halt_0)
-  );
-  
-  // Decode outputs for instruction 1
-  logic        decode_valid_1;
-  opcode_e     decode_opcode_1;
-  logic [7:0]  decode_specifier_1;
-  itype_e      decode_itype_1;
-  alu_op_e     decode_alu_op_1;
-  logic [3:0]  decode_rs1_addr_1, decode_rs2_addr_1;
-  logic [3:0]  decode_rd_addr_1, decode_rd2_addr_1;
-  logic [31:0] decode_immediate_1, decode_mem_addr_1, decode_branch_target_1;
-  logic        decode_rd_we_1, decode_rd2_we_1;
-  logic        decode_mem_read_1, decode_mem_write_1;
-  mem_size_e   decode_mem_size_1;
-  logic        decode_is_branch_1, decode_is_jsr_1, decode_is_rts_1, decode_is_halt_1;
-  
-  decode_unit decode_1 (
-    .clk(clk),
-    .rst(rst),
-    .inst_data(if_id_out_1.inst_data),
-    .inst_len(if_id_out_1.inst_len),
-    .pc(if_id_out_1.pc),
-    .valid_in(if_id_out_1.valid),
-    .valid_out(decode_valid_1),
-    .opcode(decode_opcode_1),
-    .specifier(decode_specifier_1),
-    .itype(decode_itype_1),
-    .alu_op(decode_alu_op_1),
-    .rs1_addr(decode_rs1_addr_1),
-    .rs2_addr(decode_rs2_addr_1),
-    .rd_addr(decode_rd_addr_1),
-    .rd2_addr(decode_rd2_addr_1),
-    .immediate(decode_immediate_1),
-    .mem_addr(decode_mem_addr_1),
-    .branch_target(decode_branch_target_1),
-    .rd_we(decode_rd_we_1),
-    .rd2_we(decode_rd2_we_1),
-    .mem_read(decode_mem_read_1),
-    .mem_write(decode_mem_write_1),
-    .mem_size(decode_mem_size_1),
-    .is_branch(decode_is_branch_1),
-    .is_jsr(decode_is_jsr_1),
-    .is_rts(decode_is_rts_1),
-    .is_halt(decode_is_halt_1)
-  );
-  
-  // ==========================================================================
-  // Issue Unit (Dual-Issue Control)
-  // ==========================================================================
-  
-  logic issue_inst0, issue_inst1, dual_issue;
-  logic [1:0] consumed_count;
-  
-  issue_unit issue (
-    .clk(clk),
-    .rst(rst),
-    .inst0_valid(decode_valid_0),
-    .inst0_type(decode_itype_0),
-    .inst0_mem_read(decode_mem_read_0),
-    .inst0_mem_write(decode_mem_write_0),
-    .inst0_is_branch(decode_is_branch_0),
-    .inst0_is_halt(decode_is_halt_0),
-    .inst0_rd_addr(decode_rd_addr_0),
-    .inst0_rd_we(decode_rd_we_0),
-    .inst0_rd2_addr(decode_rd2_addr_0),
-    .inst0_rd2_we(decode_rd2_we_0),
-    .inst1_valid(decode_valid_1),
-    .inst1_type(decode_itype_1),
-    .inst1_mem_read(decode_mem_read_1),
-    .inst1_mem_write(decode_mem_write_1),
-    .inst1_is_branch(decode_is_branch_1),
-    .inst1_is_halt(decode_is_halt_1),
-    .inst1_rs1_addr(decode_rs1_addr_1),
-    .inst1_rs2_addr(decode_rs2_addr_1),
-    .inst1_rd_addr(decode_rd_addr_1),
-    .inst1_rd_we(decode_rd_we_1),
-    .inst1_rd2_addr(decode_rd2_addr_1),
-    .inst1_rd2_we(decode_rd2_we_1),
-    .issue_inst0(issue_inst0),
-    .issue_inst1(issue_inst1),
-    .dual_issue(dual_issue),
-    .consumed_count(consumed_count)
-  );
-  
-  assign dual_issue_active = dual_issue;
-  
-  // ==========================================================================
-  // Register File
-  // ==========================================================================
-  
-  logic [15:0] rf_rs1_data_0, rf_rs2_data_0;
-  logic [15:0] rf_rs1_data_1, rf_rs2_data_1;
-  logic [3:0]  rf_wr_addr_0, rf_wr_addr_1;
-  logic [15:0] rf_wr_data_0, rf_wr_data_1;
-  logic        rf_wr_en_0, rf_wr_en_1;
-  
-  register_file regfile (
-    .clk(clk),
-    .rst(rst),
-    .rs1_addr_0(decode_rs1_addr_0),
-    .rs2_addr_0(decode_rs2_addr_0),
-    .rs1_data_0(rf_rs1_data_0),
-    .rs2_data_0(rf_rs2_data_0),
-    .rs1_addr_1(decode_rs1_addr_1),
-    .rs2_addr_1(decode_rs2_addr_1),
-    .rs1_data_1(rf_rs1_data_1),
-    .rs2_data_1(rf_rs2_data_1),
-    .rd_addr_0(rf_wr_addr_0),
-    .rd_data_0(rf_wr_data_0),
-    .rd_we_0(rf_wr_en_0),
-    .rd_addr_1(rf_wr_addr_1),
-    .rd_data_1(rf_wr_data_1),
-    .rd_we_1(rf_wr_en_1)
-  );
-  
-  // ==========================================================================
-  // ID/EX Pipeline Register
-  // ==========================================================================
-  
-  id_ex_t id_ex_in_0, id_ex_out_0;
-  id_ex_t id_ex_in_1, id_ex_out_1;
-  
-  always_comb begin
-    // Instruction 0
-    id_ex_in_0.valid = issue_inst0;
-    id_ex_in_0.pc = if_id_out_0.pc;
-    id_ex_in_0.opcode = decode_opcode_0;
-    id_ex_in_0.specifier = decode_specifier_0;
-    id_ex_in_0.itype = decode_itype_0;
-    id_ex_in_0.alu_op = decode_alu_op_0;
-    id_ex_in_0.rs1_addr = decode_rs1_addr_0;
-    id_ex_in_0.rs2_addr = decode_rs2_addr_0;
-    id_ex_in_0.rs1_data = rf_rs1_data_0;
-    id_ex_in_0.rs2_data = rf_rs2_data_0;
-    id_ex_in_0.immediate = decode_immediate_0;
-    id_ex_in_0.rd_addr = decode_rd_addr_0;
-    id_ex_in_0.rd2_addr = decode_rd2_addr_0;
-    id_ex_in_0.rd_we = decode_rd_we_0;
-    id_ex_in_0.rd2_we = decode_rd2_we_0;
-    id_ex_in_0.mem_read = decode_mem_read_0;
-    id_ex_in_0.mem_write = decode_mem_write_0;
-    id_ex_in_0.mem_write = decode_mem_write_0;
-    id_ex_in_0.mem_size = decode_mem_size_0;
-    id_ex_in_0.mem_addr = decode_mem_addr_0;
-    id_ex_in_0.is_branch = decode_is_branch_0;
-    id_ex_in_0.is_jsr = decode_is_jsr_0;
-    id_ex_in_0.is_rts = decode_is_rts_0;
-    id_ex_in_0.is_halt = decode_is_halt_0;
+    // Instruction Fetch
+    .mem_if_addr(cpu_if_addr),
+    .mem_if_req(cpu_if_req),
+    .mem_if_rdata(cpu_if_rdata),
+    .mem_if_ack(cpu_if_ack),
     
-    // Instruction 1
-    id_ex_in_1.valid = issue_inst1;
-    id_ex_in_1.pc = if_id_out_1.pc;
-    id_ex_in_1.opcode = decode_opcode_1;
-    id_ex_in_1.specifier = decode_specifier_1;
-    id_ex_in_1.itype = decode_itype_1;
-    id_ex_in_1.alu_op = decode_alu_op_1;
-    id_ex_in_1.rs1_addr = decode_rs1_addr_1;
-    id_ex_in_1.rs2_addr = decode_rs2_addr_1;
-    id_ex_in_1.rs1_data = rf_rs1_data_1;
-    id_ex_in_1.rs2_data = rf_rs2_data_1;
-    id_ex_in_1.immediate = decode_immediate_1;
-    id_ex_in_1.rd_addr = decode_rd_addr_1;
-    id_ex_in_1.rd2_addr = decode_rd2_addr_1;
-    id_ex_in_1.rd_we = decode_rd_we_1;
-    id_ex_in_1.rd2_we = decode_rd2_we_1;
-    id_ex_in_1.mem_read = decode_mem_read_1;
-    id_ex_in_1.mem_write = decode_mem_write_1;
-    id_ex_in_1.mem_write = decode_mem_write_1;
-    id_ex_in_1.mem_size = decode_mem_size_1;
-    id_ex_in_1.mem_addr = decode_mem_addr_1;
-    id_ex_in_1.is_branch = decode_is_branch_1;
-    id_ex_in_1.is_jsr = decode_is_jsr_1;
-    id_ex_in_1.is_rts = decode_is_rts_1;
-    id_ex_in_1.is_halt = decode_is_halt_1;
-  end
-  
-  id_ex_reg id_ex_reg_0 (
-    .clk(clk),
-    .rst(rst),
-    .stall(stall_pipeline),
-    .flush(flush_ex || branch_taken),
-    .data_in(id_ex_in_0),
-    .data_out(id_ex_out_0)
+    // Data Access
+    .mem_data_addr(cpu_data_addr),
+    .mem_data_wdata(cpu_data_wdata),
+    .mem_data_size(cpu_data_size),
+    .mem_data_we(cpu_data_we),
+    .mem_data_req(cpu_data_req),
+    .mem_data_rdata(cpu_data_rdata),
+    .mem_data_ack(cpu_data_ack),
+    
+    // Status
+    .halted(cpu_halted),
+    .current_pc(cpu_current_pc),
+    .dual_issue_active(cpu_dual_issue_active)
   );
-  
-  id_ex_reg id_ex_reg_1 (
-    .clk(clk),
+
+  // ==========================================================================
+  // Unified Memory Instance
+  // ==========================================================================
+
+  unified_memory #(
+    .MEM_SIZE_BYTES(65536) // 64 KB
+  ) mem (
+    .clk(clk_25mhz),
     .rst(rst),
-    .stall(stall_pipeline),
-    .flush(flush_ex || branch_taken),
-    .data_in(id_ex_in_1),
-    .data_out(id_ex_out_1)
+    
+    // Port A: Instruction Fetch
+    .if_addr(cpu_if_addr),
+    .if_req(cpu_if_req),
+    .if_rdata(cpu_if_rdata),
+    .if_ack(cpu_if_ack),
+    
+    // Port B: Data Access
+    .data_addr(cpu_data_addr),
+    .data_wdata(cpu_data_wdata),
+    .data_size(cpu_data_size),
+    .data_we(cpu_data_we),
+    .data_req(cpu_data_req),
+    .data_rdata(cpu_data_rdata),
+    .data_ack(cpu_data_ack)
   );
-  
+
   // ==========================================================================
-  // Hazard Detection Unit
-  // ==========================================================================
-  
-  logic [2:0] forward_a_0, forward_b_0;
-  logic [2:0] forward_a_1, forward_b_1;
-  logic hazard_stall;
-  
-  hazard_unit hazard (
-    .clk(clk),
-    .rst(rst),
-    .id_rs1_addr_0(id_ex_out_0.rs1_addr),
-    .id_rs2_addr_0(id_ex_out_0.rs2_addr),
-    .id_valid_0(id_ex_out_0.valid),
-    .id_rs1_addr_1(id_ex_out_1.rs1_addr),
-    .id_rs2_addr_1(id_ex_out_1.rs2_addr),
-    .id_valid_1(id_ex_out_1.valid),
-    .ex_rd_addr_0(ex_mem_out_0.rd_addr),
-    .ex_rd_we_0(ex_mem_out_0.rd_we),
-    .ex_mem_read_0(ex_mem_out_0.mem_read),
-    .ex_rd_addr_1(ex_mem_out_1.rd_addr),
-    .ex_rd_we_1(ex_mem_out_1.rd_we),
-    .ex_mem_read_1(ex_mem_out_1.mem_read),
-    .ex_valid_0(ex_mem_out_0.valid),
-    .ex_valid_1(ex_mem_out_1.valid),
-    .mem_rd_addr_0(mem_wb_out_0.rd_addr),
-    .mem_rd_we_0(mem_wb_out_0.rd_we),
-    .mem_rd_addr_1(mem_wb_out_1.rd_addr),
-    .mem_rd_we_1(mem_wb_out_1.rd_we),
-    .mem_valid_0(mem_wb_out_0.valid),
-    .mem_valid_1(mem_wb_out_1.valid),
-    .wb_rd_addr_0(rf_wr_addr_0),
-    .wb_rd_we_0(rf_wr_en_0),
-    .wb_rd_addr_1(rf_wr_addr_1),
-    .wb_rd_we_1(rf_wr_en_1),
-    .wb_valid_0(1'b1),  // WB is always valid if address is being written
-    .wb_valid_1(1'b1),
-    .forward_a_0(forward_a_0),
-    .forward_b_0(forward_b_0),
-    .forward_a_1(forward_a_1),
-    .forward_b_1(forward_b_1),
-    .stall(hazard_stall),
-    .flush_id(flush_id),
-    .flush_ex(flush_ex)
-  );
-  
-  // ==========================================================================
-  // Execute Stage
+  // LED Logic
   // ==========================================================================
   
-  ex_mem_t ex_mem_in_0, ex_mem_in_1;
-  
-  execute_stage execute (
-    .clk(clk),
-    .rst(rst),
-    .id_ex_0(id_ex_out_0),
-    .id_ex_1(id_ex_out_1),
-    .ex_fwd_data_0(ex_mem_out_0.alu_result[15:0]),  // FIX: Use pipeline register output
-    .ex_fwd_data_1(ex_mem_out_1.alu_result[15:0]),  // FIX: Use pipeline register output
-    .mem_fwd_data_0(mem_wb_out_0.wb_data),
-    .mem_fwd_data_1(mem_wb_out_1.wb_data),
-    .wb_fwd_data_0(rf_wr_data_0),
-    .wb_fwd_data_1(rf_wr_data_1),
-    .forward_a_0(forward_a_0),
-    .forward_b_0(forward_b_0),
-    .forward_a_1(forward_a_1),
-    .forward_b_1(forward_b_1),
-    .z_flag(z_flag),
-    .v_flag(v_flag),
-    .ex_mem_0(ex_mem_in_0),
-    .ex_mem_1(ex_mem_in_1),
-    .branch_taken(branch_taken),
-    .branch_target(branch_target)
-  );
-  
-  // ==========================================================================
-  // EX/MEM Pipeline Register
-  // ==========================================================================
-  
-  ex_mem_t ex_mem_out_0, ex_mem_out_1;
-  
-  ex_mem_reg ex_mem_reg_0 (
-    .clk(clk),
-    .rst(rst),
-    .stall(stall_pipeline),
-    .flush(1'b0),
-    .data_in(ex_mem_in_0),
-    .data_out(ex_mem_out_0)
-  );
-  
-  ex_mem_reg ex_mem_reg_1 (
-    .clk(clk),
-    .rst(rst),
-    .stall(stall_pipeline),
-    .flush(1'b0),
-    .data_in(ex_mem_in_1),
-    .data_out(ex_mem_out_1)
-  );
-  
-  // ==========================================================================
-  // Memory Stage
-  // ==========================================================================
-  
-  mem_wb_t mem_wb_in_0, mem_wb_in_1;
-  logic mem_stall;
-  
-  memory_stage memory (
-    .clk(clk),
-    .rst(rst),
-    .ex_mem_0(ex_mem_out_0),
-    .ex_mem_1(ex_mem_out_1),
-    .dmem_addr(mem_data_addr),
-    .dmem_wdata(mem_data_wdata),
-    .dmem_size(mem_data_size),
-    .dmem_we(mem_data_we),
-    .dmem_req(mem_data_req),
-    .dmem_rdata(mem_data_rdata),
-    .dmem_ack(mem_data_ack),
-    .mem_wb_0(mem_wb_in_0),
-    .mem_wb_1(mem_wb_in_1),
-    .mem_stall(mem_stall)
-  );
-  
-  // ==========================================================================
-  // MEM/WB Pipeline Register
-  // ==========================================================================
-  
-  mem_wb_t mem_wb_out_0, mem_wb_out_1;
-  
-  mem_wb_reg mem_wb_reg_0 (
-    .clk(clk),
-    .rst(rst),
-    .stall(stall_pipeline),
-    .flush(1'b0),
-    .data_in(mem_wb_in_0),
-    .data_out(mem_wb_out_0)
-  );
-  
-  mem_wb_reg mem_wb_reg_1 (
-    .clk(clk),
-    .rst(rst),
-    .stall(stall_pipeline),
-    .flush(1'b0),
-    .data_in(mem_wb_in_1),
-    .data_out(mem_wb_out_1)
-  );
-  
-  // ==========================================================================
-  // Write-Back Stage
-  // ==========================================================================
-  
-  logic wb_z_flag_update, wb_v_flag_update;
-  logic wb_z_flag_value, wb_v_flag_value;
-  
-  writeback_stage writeback (
-    .clk(clk),
-    .rst(rst),
-    .mem_wb_0(mem_wb_out_0),
-    .mem_wb_1(mem_wb_out_1),
-    .rf_wr_addr_0(rf_wr_addr_0),
-    .rf_wr_data_0(rf_wr_data_0),
-    .rf_wr_en_0(rf_wr_en_0),
-    .rf_wr_addr_1(rf_wr_addr_1),
-    .rf_wr_data_1(rf_wr_data_1),
-    .rf_wr_en_1(rf_wr_en_1),
-    .z_flag_update(wb_z_flag_update),
-    .z_flag_value(wb_z_flag_value),
-    .v_flag_update(wb_v_flag_update),
-    .v_flag_value(wb_v_flag_value),
-    .halted(halted)
-  );
-  
-  // ==========================================================================
-  // Pipeline Stall Control
-  // ==========================================================================
-  
-  // Detect HLT in pipeline to stop fetching new instructions
-  // But allow pipeline to continue draining until HLT reaches WB
-  logic halt_in_pipeline;
-  assign halt_in_pipeline = (id_ex_out_0.valid && id_ex_out_0.is_halt) ||
-                            (id_ex_out_1.valid && id_ex_out_1.is_halt) ||
-                            (ex_mem_out_0.valid && ex_mem_out_0.is_halt) ||
-                            (ex_mem_out_1.valid && ex_mem_out_1.is_halt);
-  
-  // Stall entire pipeline only for hazards, memory stalls, or once fully halted
-  assign stall_pipeline = hazard_stall || mem_stall || halted;
-  
-  // ==========================================================================
-  // Current PC Reporting
-  // ==========================================================================
-  
-  // When halted or halt in pipeline, report PC of the halt instruction, not fetch PC
-  // Find the halt instruction PC from the pipeline
-  logic [31:0] halt_pc;
   always_comb begin
-    if (mem_wb_out_0.valid && mem_wb_out_0.is_halt) begin
-      halt_pc = mem_wb_out_0.pc;
-    end else if (mem_wb_out_1.valid && mem_wb_out_1.is_halt) begin
-      halt_pc = mem_wb_out_1.pc;
-    end else if (ex_mem_out_0.valid && ex_mem_out_0.is_halt) begin
-      halt_pc = ex_mem_out_0.pc;
-    end else if (ex_mem_out_1.valid && ex_mem_out_1.is_halt) begin
-      halt_pc = ex_mem_out_1.pc;
-    end else if (id_ex_out_0.valid && id_ex_out_0.is_halt) begin
-      halt_pc = id_ex_out_0.pc;
-    end else if (id_ex_out_1.valid && id_ex_out_1.is_halt) begin
-      halt_pc = id_ex_out_1.pc;
-    end else begin
-      halt_pc = fetch_pc_0;
-    end
+    led[7]   = rst;                       // LED[7]: Reset Status (ON = in reset)
+    led[6]   = heartbeat[24];             // LED[6]: Heartbeat (toggle approx 0.6s)
+    led[5]   = cpu_halted;                // LED[5]: CPU Halted
+    led[4]   = cpu_dual_issue_active;     // LED[4]: Dual Issue Active
+    led[3:0] = cpu_current_pc[5:2];       // LED[3:0]: PC bits [5:2] (fast toggle)
   end
-  
-  assign current_pc = (halt_in_pipeline || halted) ? halt_pc : fetch_pc_0;
 
 endmodule : core_top

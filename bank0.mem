@@ -1,0 +1,39 @@
+
+# Bank 0 Initialization (Blinky / Test Program)
+# Since we have 16 byte-interleaved banks:
+# Address 0 -> Bank 0
+# Address 1 -> Bank 1
+# ...
+# Address 16 -> Bank 0
+
+# Simple Infinite Loop (JMP to 0) + Register Increment
+# Instruction: ADD R1, R1, #1 (5 bytes)
+# Opcode: 0x01 (ADD)
+# Spec: 0x00 (Reg, Imm)
+# Rd: 0x01
+# Imm: 0x0001
+# Encoding: 00 01 10 00 01
+# Banks:    B0 B1 B2 B3 B4
+
+# Instruction: JMP 0 (6 bytes)
+# Opcode: 0x0A (B)
+# Spec: 0x00
+# Target: 0x00000000
+# Encoding: 00 0A 00 00 00 00
+# Banks:    B5 B6 B7 B8 B9 B10
+
+# Memory Image:
+# Bank 0: 00 (Byte 0 of ADD)
+# Bank 1: 01 (Byte 1 of ADD)
+# Bank 2: 10 (Byte 2 of ADD)
+# Bank 3: 00 (Byte 3 of ADD)
+# Bank 4: 01 (Byte 4 of ADD)
+# Bank 5: 00 (Byte 0 of JMP)
+# Bank 6: 0A (Byte 1 of JMP)
+# Bank 7: 00 (Byte 2 of JMP)
+# Bank 8: 00 (Byte 3 of JMP)
+# Bank 9: 00 (Byte 4 of JMP)
+# Bank 10: 00 (Byte 5 of JMP)
+# Bank 11..15: 00 (Padding)
+
+00

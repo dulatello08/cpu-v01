@@ -52,7 +52,8 @@ module core_unified_tb;
   );
   
   // Core instance
-  core_top dut (
+  // Core instance
+  cpu_core dut (
     .clk(clk),
     .rst(rst),
     .mem_if_addr(mem_if_addr),
@@ -112,50 +113,37 @@ module core_unified_tb;
     @(posedge clk);
     rst = 0;
     
+    
     $display("Loading minimal test program into memory...");
     
+    // Clear memory
+    for (int i = 0; i < 65536; i++) begin
+      write_byte(i, 8'h00);
+    end
+
     // Absolute minimal test program (big-endian encoding):
     // 0x00: MOV R1, #0x0005       [00][09][01][00][05]
-    // 0x05: MOV R2, R1            [02][09][02][01]  - depends on R1, prevents dual-issue
+    // 0x05: MOV R2, R1            [02][09][02][01]
     // 0x09: HLT                   [00][12]
-    
-    // Initialize all memory to zero
-    for (int i = 0; i < 256; i++) begin
-      memory.mem[i] = 8'h00;
-    end
-    
+
     // Load program (big-endian)
+    
     // MOV R1, #0x0005 at 0x00
-    // New NOP at 0x00
-    memory.mem[32'h00] = 8'h00;  // NOP spec
-    memory.mem[32'h01] = 8'h00;  // NOP op
+    write_byte(32'h00, 8'h00);  // MOV spec
+    write_byte(32'h01, 8'h09);  // MOV op
+    write_byte(32'h02, 8'h01);  // rd = R1
+    write_byte(32'h03, 8'h00);  // imm high
+    write_byte(32'h04, 8'h05);  // imm low
 
-    // NOP at 0x02
-    memory.mem[32'h02] = 8'h00;  // NOP spec
-    memory.mem[32'h03] = 8'h00;  // NOP op
+    // MOV R2, R1 at 0x05
+    write_byte(32'h05, 8'h02);  // MOV spec (register)
+    write_byte(32'h06, 8'h09);  // MOV op
+    write_byte(32'h07, 8'h02);  // rd = R2
+    write_byte(32'h08, 8'h01);  // rs = R1
     
-    // NOP at 0x04
-    memory.mem[32'h04] = 8'h00;  // NOP spec
-    memory.mem[32'h05] = 8'h00;  // NOP op
-
-    // MOV R1, #0x0005 at 0x06
-    memory.mem[32'h06] = 8'h00;  // MOV spec (immediate)
-    memory.mem[32'h07] = 8'h09;  // MOV op
-    memory.mem[32'h08] = 8'h01;  // rd = R1
-    memory.mem[32'h09] = 8'h00;  // imm high
-    memory.mem[32'h0A] = 8'h05;   // imm low (0x0005)
-    
-    // MOV R2, R1 at 0x0B (register-to-register copy)
-    // This depends on R1, so it CANNOT dual issue with the previous instruction.
-    // This forces the issue unit to split them, testing the replay logic.
-    memory.mem[32'h0B] = 8'h02;  // MOV spec (register)
-    memory.mem[32'h0C] = 8'h09;  // MOV op
-    memory.mem[32'h0D] = 8'h02;  // rd = R2 (destination)
-    memory.mem[32'h0E] = 8'h01;   // rn = R1 (source)
-    
-    // HLT at 0x0F
-    memory.mem[32'h0F] = 8'h00;  // HLT spec
-    memory.mem[32'h10] = 8'h12;  // HLT op
+    // HLT at 0x09
+    write_byte(32'h09, 8'h00);  // HLT spec
+    write_byte(32'h0A, 8'h12);  // HLT op
     
     $display("Program loaded:");
     $display("  0x00: MOV R1, #0x0005");
@@ -210,10 +198,10 @@ module core_unified_tb;
       $display("Cycle %3d: PC=0x%08h Halt=%b", 
                cycle_count, current_pc, halted);
       $display("          Memory@PC: [0x%02h 0x%02h 0x%02h 0x%02h 0x%02h 0x%02h 0x%02h]",
-               memory.mem[current_pc], memory.mem[current_pc+1],
-               memory.mem[current_pc+2], memory.mem[current_pc+3],
-               memory.mem[current_pc+4], memory.mem[current_pc+5],
-               memory.mem[current_pc+6]);
+               read_byte(current_pc), read_byte(current_pc+1),
+               read_byte(current_pc+2), read_byte(current_pc+3),
+               read_byte(current_pc+4), read_byte(current_pc+5),
+               read_byte(current_pc+6));
 //      $display("          FetchState: state=%d current_pc=0x%h consumed=%d",
 //               dut.fetch.state, dut.fetch.current_pc, dut.fetch.consumed_count);
 //      $display("                    block[1:0]=0x%02h%02h spec_0=0x%02h op_0=0x%02h len0=%d",
@@ -240,5 +228,65 @@ module core_unified_tb;
                dut.mem_wb_out_0.rd_addr, dut.mem_wb_out_0.rd_we);
     end
   end
+
+  // Helper task to write a byte to unified memory
+  task write_byte(input [31:0] addr, input [7:0] data);
+    logic [3:0] bank_sel;
+    logic [31:0] bank_addr;
+    begin
+      bank_sel = addr[3:0];
+      bank_addr = addr[31:4]; // addr / 16
+      
+      // Access the specific bank's memory array using hierarchical reference
+      case (bank_sel)
+        4'h0: memory.bank_gen[0].mem[bank_addr] = data;
+        4'h1: memory.bank_gen[1].mem[bank_addr] = data;
+        4'h2: memory.bank_gen[2].mem[bank_addr] = data;
+        4'h3: memory.bank_gen[3].mem[bank_addr] = data;
+        4'h4: memory.bank_gen[4].mem[bank_addr] = data;
+        4'h5: memory.bank_gen[5].mem[bank_addr] = data;
+        4'h6: memory.bank_gen[6].mem[bank_addr] = data;
+        4'h7: memory.bank_gen[7].mem[bank_addr] = data;
+        4'h8: memory.bank_gen[8].mem[bank_addr] = data;
+        4'h9: memory.bank_gen[9].mem[bank_addr] = data;
+        4'hA: memory.bank_gen[10].mem[bank_addr] = data;
+        4'hB: memory.bank_gen[11].mem[bank_addr] = data;
+        4'hC: memory.bank_gen[12].mem[bank_addr] = data;
+        4'hD: memory.bank_gen[13].mem[bank_addr] = data;
+        4'hE: memory.bank_gen[14].mem[bank_addr] = data;
+        4'hF: memory.bank_gen[15].mem[bank_addr] = data;
+      endcase
+    end
+  endtask
+
+  // Helper function to read a byte from unified memory (for debug)
+  function logic [7:0] read_byte(input [31:0] addr);
+    logic [3:0] bank_sel;
+    logic [31:0] bank_addr;
+    begin
+      bank_sel = addr[3:0];
+      bank_addr = addr[31:4];
+      
+      case (bank_sel)
+        4'h0: return memory.bank_gen[0].mem[bank_addr];
+        4'h1: return memory.bank_gen[1].mem[bank_addr];
+        4'h2: return memory.bank_gen[2].mem[bank_addr];
+        4'h3: return memory.bank_gen[3].mem[bank_addr];
+        4'h4: return memory.bank_gen[4].mem[bank_addr];
+        4'h5: return memory.bank_gen[5].mem[bank_addr];
+        4'h6: return memory.bank_gen[6].mem[bank_addr];
+        4'h7: return memory.bank_gen[7].mem[bank_addr];
+        4'h8: return memory.bank_gen[8].mem[bank_addr];
+        4'h9: return memory.bank_gen[9].mem[bank_addr];
+        4'hA: return memory.bank_gen[10].mem[bank_addr];
+        4'hB: return memory.bank_gen[11].mem[bank_addr];
+        4'hC: return memory.bank_gen[12].mem[bank_addr];
+        4'hD: return memory.bank_gen[13].mem[bank_addr];
+        4'hE: return memory.bank_gen[14].mem[bank_addr];
+        4'hF: return memory.bank_gen[15].mem[bank_addr];
+        default: return 8'h00;
+      endcase
+    end
+  endfunction
 
 endmodule : core_unified_tb

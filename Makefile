@@ -59,6 +59,7 @@ RTL_SRCS = \
 	$(RTL_DIR)/memory_stage.sv \
 	$(RTL_DIR)/writeback_stage.sv \
 	$(RTL_DIR)/unified_memory.sv \
+	$(RTL_DIR)/cpu_core.sv \
 	$(RTL_DIR)/core_top.sv
 
 # Create build directory
@@ -239,8 +240,39 @@ wave_alu: $(BUILD_DIR)/alu_tb.vcd
 # Clean
 # ============================================================================
 
+
+
+# ============================================================================
+# FPGA Implementation (Lattice ECP5 - ULX3S)
+# ============================================================================
+
+# Convert SystemVerilog to Verilog using sv2v
+# We combine everything into one file to handle packages/interfaces correctly
+build/*.v: $(RTL_SRCS)
+	@mkdir -p $(BUILD_DIR)
+	sv2v -w $(BUILD_DIR) $(RTL_SRCS)
+
+# Synthesis (Yosys) using the converted Verilog file
+core_top.json: build/*.v
+	yosys -p "synth_ecp5 -top core_top -json $@"
+
+# Place and Route (Nextpnr)
+core_top.config: core_top.json ulx3s-85f-min.lpf
+	nextpnr-ecp5 --85k --package CABGA381 --json $< --lpf ulx3s-85f-min.lpf --textcfg $@ --threads 8
+
+# Bitstream Generation (Ecppack)
+core_top.bit: core_top.config
+	ecppack $< $@
+
+# Upload to FPGA
+prog: core_top.bit
+	openFPGALoader --board ulx3s $<
+
+# Build Bitstream only
+fpga: core_top.bit
+
 clean:
-	rm -rf $(BUILD_DIR)
+	rm -rf $(BUILD_DIR) *.json *.config *.bit *.svf
 
 .PHONY: default check-tools clean \
         unit-tests core-tests all-tests \
@@ -249,4 +281,5 @@ clean:
         alu_tb run_alu_tb register_file_tb run_register_file_tb \
         multiply_unit_tb run_multiply_unit_tb branch_unit_tb run_branch_unit_tb \
         decode_unit_tb run_decode_unit_tb fetch_unit_tb run_fetch_unit_tb core_unified_tb run_core_unified_tb \
-        core_any_tb run_core_any_tb
+        core_any_tb run_core_any_tb \
+        fpga prog
