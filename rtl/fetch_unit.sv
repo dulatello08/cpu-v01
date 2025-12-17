@@ -82,13 +82,37 @@ module fetch_unit
   // Fetch Logic & State Machine
   // ============================================================================
   
+  // ============================================================================
+  // Fetch Logic & State Machine
+  // ============================================================================
+  
   logic [31:0] fetch_addr;
   logic        fetch_req;
   
+  // Calculate next PC combinationally based on current decode attempt
+  logic [31:0] next_pc_comb;
+  
+  always_comb begin
+     logic [4:0] total_len_comb;
+     total_len_comb = 5'd0;
+     
+     if (valid_0) begin
+        total_len_comb = {1'b0, len_0};
+        if (valid_1) begin
+           total_len_comb = total_len_comb + {1'b0, len_1};
+        end
+     end
+     
+     next_pc_comb = current_pc + {27'h0, total_len_comb};
+  end
+
   always_comb begin
     state_next = state;
     fetch_req = 1'b0;
     fetch_addr = 32'h0;
+    
+    // Default: Request current conceptual PC
+    // We might override this below if we are "streaming"
     
     case (state)
       STATE_INIT: begin
@@ -97,14 +121,26 @@ module fetch_unit
       end
       
       STATE_REQ: begin
-        // Issue request for current_pc
+        // By default request current
+        // If we get an ACK this cycle, we want to Request NEXT_PC in the SAME cycle
+        // to avoid a dead bubble.
+        
         fetch_req = 1'b1;
         fetch_addr = current_pc;
         
         if (!stall) begin
           if (mem_ack) begin
-            // Zero-latency memory: Data ready immediately
-            // We will consume in this cycle, so next cycle request new PC
+            // OPTIMIZATION: Zero-Wait State Machine
+            // We received data for 'current_pc' NOW.
+            // We can immediately issue request for 'next_pc_comb'.
+            
+            // To do this, we must update the address output THIS cycle.
+            // But 'current_pc' register won't update until clock edge.
+            // So we bypass the address output.
+             
+            fetch_addr = next_pc_comb; // Speculative next request
+            
+            // Stay in REQ state -> Fetch pipeline full
             state_next = STATE_REQ;
           end else begin
             // Wait for ack
@@ -114,12 +150,17 @@ module fetch_unit
       end
       
       STATE_WAIT_ACK: begin
-        // Request already issued, wait for ack
+        // Request already issued for current_pc
         fetch_req = 1'b0;
-        fetch_addr = current_pc; // Address shouldn't matter if req is 0
+        fetch_addr = current_pc; 
         
         if (mem_ack && !stall) begin
-           // Data ready. Consume and go back to REQ for next PC
+           // Received late ack.
+           // We can immediately switch back to REQ and issue for next_pc_comb
+           // effectively restarting the stream
+           fetch_req = 1'b1;
+           fetch_addr = next_pc_comb;
+           
            state_next = STATE_REQ;
         end
       end
@@ -246,15 +287,10 @@ module fetch_unit
         state <= STATE_REQ;
       end else if ((state == STATE_REQ && mem_ack) || (state == STATE_WAIT_ACK && mem_ack)) begin
         // Speculative advance
-        if (valid_0) begin
-          total_len_seq = {1'b0, len_0};
-          
-          if (valid_1) begin
-             total_len_seq = total_len_seq + {1'b0, len_1};
-          end
-          
-          current_pc <= current_pc + {27'h0, total_len_seq};
-        end
+        // We successfully fetched THIS cycle.
+        // We advance the PC register for the NEXT cycle.
+        
+        current_pc <= next_pc_comb;
       end
     end
   end

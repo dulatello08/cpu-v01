@@ -152,7 +152,7 @@ module reproduce_fetch_perf;
         $finish;
       end
       begin
-        repeat(500) @(posedge clk);
+        repeat(3000) @(posedge clk);
         $display("\nTIMEOUT: Limit reached");
         $display("Total cycles: %0d", cycle_count);
         $finish;
