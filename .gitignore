@@ -3,3 +3,6 @@ build
 core_top.bit
 core_top.config
 core_top.json
+*.mem
+*.vcd
+cmake-build-debug
