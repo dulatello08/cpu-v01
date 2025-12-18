@@ -49,7 +49,7 @@ Instructions can be dual-issued if **ALL** of these conditions are met:
 
 2. **No Resource Hazards**:
    - At most one memory operation (read or write)
-   - At most one branch/control instruction
+   - **No branch instructions** (any branch must issue alone)
 
 3. **No Write-After-Write (WAW) Hazards**:
    - Inst0 and Inst1 must not write to same register
@@ -72,7 +72,7 @@ waw_hazard = (inst0_rd_we && inst1_rd_we && inst0_rd_addr == inst1_rd_addr) ||
 // Dual-write restriction: If inst0 writes two registers, it uses both write ports
 if (inst0_rd_we && inst0_rd2_we) write_port_conflict = 1'b1;
 
-// RAW hazard
+// RAW hazard (between inst0 and inst1)
 raw_hazard = (inst0_rd_we && inst0_rd_addr != 0 && 
               ((inst1_rs1_addr == inst0_rd_addr) || (inst1_rs2_addr == inst0_rd_addr))) ||
              (inst0_rd2_we && inst0_rd2_addr != 0 &&
@@ -82,7 +82,7 @@ raw_hazard = (inst0_rd_we && inst0_rd_addr != 0 &&
 mem_conflict = (inst0_mem_read || inst0_mem_write) && 
                (inst1_mem_read || inst1_mem_write);
                
-branch_conflict = inst0_is_branch && inst1_is_branch;
+branch_conflict = inst0_is_branch || inst1_is_branch;
 ```
 
 ### Issue Decision
@@ -132,8 +132,8 @@ Dual-issue capability can achieve up to **2 IPC (instructions per cycle)** for i
 ### Implementation Notes
 
 1. **Conservative Approach**: Issue unit prevents hazards pessimistically
-2. **No Forwarding**: RAW hazards always prevent dual-issue (no bypass paths)
-3. **R0 Exception**: Register R0 reads don't cause RAW hazards (hardwired to 0)
+2. **Dependence Checking**: RAW hazards between instruction 0 and 1 prevent simultaneous issue.
+3. **Forwarding**: The execution stage implements full forwarding (from EX, MEM, WB to EX) to resolve hazards for issued instructions against in-flight instructions, but the issue unit logic ensures 0 and 1 are independent of *each other* when dual issuing.
 
 ### Related Modules
 - `decode_unit.sv`: Provides instruction type and operand information

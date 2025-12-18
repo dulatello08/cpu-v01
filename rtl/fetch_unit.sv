@@ -180,29 +180,39 @@ module fetch_unit
   logic [7:0] spec_1, op_1;
   logic [3:0] len_1;
   
+  // OPTIMIZATION: Parallel Length Pre-decode
+  // We calculate the instruction length for EVERY byte offset in parallel.
+  // This breaks the dependency chain: len_0 -> Mux -> op_1 -> len_1
+  // New path: len_0 -> Mux -> len_1 (fast)
+  
+  logic [3:0] precalc_len [16];
+  
   always_comb begin
-    // Defaults
-    spec_0 = 8'h0; op_0 = 8'h0; len_0 = 4'h0;
-    spec_1 = 8'h0; op_1 = 8'h0; len_1 = 4'h0;
+    // 1. Calculate length assuming instruction starts at offset 'k'
+    for (int k=0; k < 15; k++) begin
+       // NeoCore: Specifier at byte 0, Opcode at byte 1
+       // Safety: indices k and k+1 are within [0..15] for k < 15
+       precalc_len[k] = get_inst_length(current_block[k+1], current_block[k]);
+    end
+    precalc_len[15] = 4'd1; // Cannot form full instruction at offset 15 (min 2 bytes)
     
-    // We always have 16 bytes starting at current_pc
-    // So Inst 0 is at offset 0
+    // 2. Select lengths for Inst 0 and Inst 1
     
-    // --- Inst 0 ---
+    // Inst 0 always starts at offset 0
+    // Equivalent to: spec_0=block[0], op_0=block[1], len_0=get_len...
+    len_0 = precalc_len[0];
+    
+    // Extract Op/Spec for Inst 0 (needed for output or debug)
     spec_0 = current_block[0];
-    op_0 = current_block[1]; // Opcode is always at byte 1
+    op_0 = current_block[1];
     
-    len_0 = get_inst_length(op_0, spec_0);
-      
-    // --- Inst 1 ---
-    // Only if Inst 0 is valid
-    if (len_0 > 0) begin
-      // Inst 1 starts at offset len_0
-      if (len_0 < 15) begin
-        spec_1 = current_block[len_0];
-        op_1 = current_block[len_0 + 1];
-        len_1 = get_inst_length(op_1, spec_1);
-      end
+    // Inst 1
+    // Starts at offset 'len_0'
+    len_1 = 4'd0;
+    
+    if (len_0 > 0 && len_0 < 15) begin
+      // Fast select
+      len_1 = precalc_len[len_0];
     end
   end
 
@@ -232,7 +242,10 @@ module fetch_unit
         end
         
         // Always attempt to issue 2nd instruction if it fits
-        if (len_1 > 0 && (op_1 != OP_HLT)) begin
+        // OPTIMIZATION: Removed (op_1 != OP_HLT) check.
+        // HLT or invalid ops will be handled by Issue serialized, causing a replay if needed.
+        // This removes dependency on op_1 mux for next_pc calculation.
+        if (len_1 > 0) begin
           if (({1'b0, len_0} + {1'b0, len_1}) <= 5'd16) begin
             valid_1 = 1'b1;
             pc_1 = current_pc + {28'h0, len_0};

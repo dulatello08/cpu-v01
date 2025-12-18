@@ -102,7 +102,7 @@ execute_stage execute (
 ### Implementation Notes
 
 1. **MOV Instruction**: Special handling to use immediate for non-register specifiers
-2. **Forwarding**: Supports forwarding from both MEM and WB stages
+2. **Forwarding**: Supports forwarding from EX, MEM, and WB stages (6 paths total)
 3. **Flags**: Z and V flags computed but not yet fully integrated into branch logic
 
 ### Related Modules

@@ -69,16 +69,16 @@ module issue_unit
     
     // Write port conflict: both instructions write to same register
     write_port_conflict = 1'b0;
-    if (inst0_rd_we && inst1_rd_we && (inst0_rd_addr == inst1_rd_addr) && (inst0_rd_addr != 4'h0)) begin
+    if (inst0_rd_we && inst1_rd_we && (inst0_rd_addr == inst1_rd_addr)) begin
       write_port_conflict = 1'b1;
     end
-    if (inst0_rd2_we && inst1_rd_we && (inst0_rd2_addr == inst1_rd_addr) && (inst0_rd2_addr != 4'h0)) begin
+    if (inst0_rd2_we && inst1_rd_we && (inst0_rd2_addr == inst1_rd_addr)) begin
       write_port_conflict = 1'b1;
     end
-    if (inst0_rd_we && inst1_rd2_we && (inst0_rd_addr == inst1_rd2_addr) && (inst0_rd_addr != 4'h0)) begin
+    if (inst0_rd_we && inst1_rd2_we && (inst0_rd_addr == inst1_rd2_addr)) begin
       write_port_conflict = 1'b1;
     end
-    if (inst0_rd2_we && inst1_rd2_we && (inst0_rd2_addr == inst1_rd2_addr) && (inst0_rd2_addr != 4'h0)) begin
+    if (inst0_rd2_we && inst1_rd2_we && (inst0_rd2_addr == inst1_rd2_addr)) begin
       write_port_conflict = 1'b1;
     end
     
@@ -107,14 +107,14 @@ module issue_unit
     data_dependency = 1'b0;
     
     // If inst0 writes a register that inst1 reads, there's a dependency
-    if (inst0_rd_we && (inst0_rd_addr != 4'h0)) begin
+    if (inst0_rd_we) begin
       if ((inst0_rd_addr == inst1_rs1_addr) || (inst0_rd_addr == inst1_rs2_addr)) begin
         data_dependency = 1'b1;
       end
     end
     
     // Check second destination of inst0 (for 32-bit operations)
-    if (inst0_rd2_we && (inst0_rd2_addr != 4'h0)) begin
+    if (inst0_rd2_we) begin
       if ((inst0_rd2_addr == inst1_rs1_addr) || (inst0_rd2_addr == inst1_rs2_addr)) begin
         data_dependency = 1'b1;
       end

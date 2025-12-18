@@ -111,17 +111,16 @@ module core_top (
     .data_rdata(cpu_data_rdata),
     .data_ack(cpu_data_ack)
   );
-
   // ==========================================================================
   // LED Logic
   // ==========================================================================
   
-  always_comb begin
-    led[7]   = rst;                       // LED[7]: Reset Status (ON = in reset)
-    led[6]   = heartbeat[24];             // LED[6]: Heartbeat (toggle approx 0.6s)
-    led[5]   = cpu_halted;                // LED[5]: CPU Halted
-    led[4]   = cpu_dual_issue_active;     // LED[4]: Dual Issue Active
-    led[3:0] = cpu_current_pc[5:2];       // LED[3:0]: PC bits [5:2] (fast toggle)
+  always_ff @(posedge clk_25mhz) begin
+    led[7]   <= rst;                       // LED[7]: Reset Status (ON = in reset)
+    led[6]   <= heartbeat[24];             // LED[6]: Heartbeat (toggle approx 0.6s)
+    led[5]   <= cpu_halted;                // LED[5]: CPU Halted
+    led[4]   <= cpu_dual_issue_active;     // LED[4]: Dual Issue Active
+    led[3:0] <= cpu_current_pc[5:2];       // LED[3:0]: PC bits [5:2] (fast toggle)
   end
 
 endmodule : core_top

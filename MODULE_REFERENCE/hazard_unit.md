@@ -39,9 +39,13 @@ hazard_stall = load_use_hazard;
 
 ### Forwarding Detection
 
-(If implemented) Detects when data can be forwarded from:
-- EX/MEM stage to EX stage (MEM forwarding)
-- MEM/WB stage to EX stage (WB forwarding)
+The hazard unit controls a comprehensive forwarding network (6-path) to resolve RAW hazards without stalling:
+
+- **EX -> EX**: Forward from EX stage of slot 0 or 1 to current EX stage
+- **MEM -> EX**: Forward from MEM stage of slot 0 or 1 to current EX stage
+- **WB -> EX**: Forward from WB stage of slot 0 or 1 to current EX stage
+
+Forwarding is prioritized: EX (newest) > MEM > WB (oldest).
 
 ### Usage Example
 
@@ -66,8 +70,8 @@ hazard_unit hazards (
 ### Implementation Notes
 
 1. **Conservative**: May stall more than strictly necessary
-2. **No R0 Hazards**: R0 reads don't cause hazards (hardwired to 0)
-3. **Dual-Issue Aware**: Checks hazards for both instruction slots
+2. **Dual-Issue Aware**: Checks hazards for both instruction slots
+3. **Forwarding Priority**: Correctly selects most recent value if multiple stages write to same register
 
 ### Related Modules
 - `core_top.sv`: Uses hazard_stall in stall_pipeline logic

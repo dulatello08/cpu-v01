@@ -251,10 +251,9 @@ wave_alu: $(BUILD_DIR)/alu_tb.vcd
 build/*.v: $(RTL_SRCS)
 	@mkdir -p $(BUILD_DIR)
 	sv2v -w $(BUILD_DIR) $(RTL_SRCS)
-TODO RIGHT NOW: TEST BRANCH INCREMENT IF PROGRAM- HALT. RUN IN IVERILOG
 # Synthesis (Yosys) using the converted Verilog file
 core_top.json: build/*.v
-	yosys -p "synth_ecp5 -top core_top -json core_top.json" $<
+	yosys -p "read_verilog build/*.v; synth_ecp5 -top core_top -json core_top.json"
 
 # Place and Route (Nextpnr)
 core_top.config: core_top.json ulx3s-85f-min.lpf

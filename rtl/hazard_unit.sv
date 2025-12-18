@@ -72,7 +72,7 @@ module hazard_unit
     forward_b_0 = 3'b000;
     
     // Forward operand A for instruction 0
-    if (id_valid_0 && (id_rs1_addr_0 != 4'h0)) begin
+    if (id_valid_0) begin
       // Priority: EX > MEM > WB (most recent first)
       // Check EX stage slot 0
       if (ex_valid_0 && ex_rd_we_0 && (ex_rd_addr_0 == id_rs1_addr_0)) begin
@@ -101,7 +101,7 @@ module hazard_unit
     end
     
     // Forward operand B for instruction 0
-    if (id_valid_0 && (id_rs2_addr_0 != 4'h0)) begin
+    if (id_valid_0) begin
       if (ex_valid_0 && ex_rd_we_0 && (ex_rd_addr_0 == id_rs2_addr_0)) begin
         forward_b_0 = 3'b001;
       end
@@ -132,7 +132,7 @@ module hazard_unit
     forward_b_1 = 3'b000;
     
     // Forward operand A for instruction 1
-    if (id_valid_1 && (id_rs1_addr_1 != 4'h0)) begin
+    if (id_valid_1) begin
       if (ex_valid_0 && ex_rd_we_0 && (ex_rd_addr_0 == id_rs1_addr_1)) begin
         forward_a_1 = 3'b001;
       end
@@ -154,7 +154,7 @@ module hazard_unit
     end
     
     // Forward operand B for instruction 1
-    if (id_valid_1 && (id_rs2_addr_1 != 4'h0)) begin
+    if (id_valid_1) begin
       if (ex_valid_0 && ex_rd_we_0 && (ex_rd_addr_0 == id_rs2_addr_1)) begin
         forward_b_1 = 3'b001;
       end

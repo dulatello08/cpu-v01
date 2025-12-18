@@ -1,2 +1,5 @@
 build
 .idea
+core_top.bit
+core_top.config
+core_top.json

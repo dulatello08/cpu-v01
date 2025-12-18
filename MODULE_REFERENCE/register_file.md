@@ -40,25 +40,12 @@ The Register File provides 16 general-purpose 16-bit registers with multi-port r
 
 - **16 registers**: R0 through R15
 - **16-bit width**: Each register holds a 16-bit value
-- **R0 special**: Hardwired to 0, writes to R0 are ignored
+- **R0**: General purpose register, fully readable and writable
 
 ### Multi-Port Configuration
 
 - **4 read ports**: Supports reading 4 registers simultaneously (2 per slot)
 - **4 write ports**: Supports writing 4 registers simultaneously (2 per slot for 32-bit ops)
-
-### R0 Hardwiring
-
-```systemverilog
-assign rs1_data_0 = (rs1_addr_0 == 4'h0) ? 16'h0000 : registers[rs1_addr_0];
-assign rs2_data_0 = (rs2_addr_0 == 4'h0) ? 16'h0000 : registers[rs2_addr_0];
-// Similar for slot 1
-
-// Write logic
-if (rd_we_0 && rd_addr_0 != 4'h0) begin
-  registers[rd_addr_0] <= rd_data_0;
-end
-```
 
 ### 32-bit Operations
 
@@ -69,7 +56,7 @@ For 32-bit multiply operations:
 
 ### Reset Behavior
 
-All registers initialized to 0x0000 on reset.
+All registers (R0-R15) initialized to 0x0000 on reset.
 
 ### Usage Example
 
@@ -95,7 +82,6 @@ register_file regfile (
 1. **Combinational Reads**: Register reads are combinational
 2. **Synchronous Writes**: Register writes occur on clock edge
 3. **Write Conflicts**: Issue unit prevents dual writes to same register
-4. **Bypassing**: R0 reads don't access array, directly return 0
 
 ### Related Modules
 - `decode_unit.sv`: Generates read addresses
