@@ -94,6 +94,8 @@ module fetch_unit
   
   always_comb begin
      logic [4:0] total_len_comb;
+     logic [4:0] sum_low; // 5 bits for bits [3:0] + carry
+
      total_len_comb = 5'd0;
      
      if (valid_0) begin
@@ -103,7 +105,12 @@ module fetch_unit
         end
      end
      
-     next_pc_comb = current_pc + {27'h0, total_len_comb};
+     // Segmented Add: Split at bit 4 (Bank Boundary)
+     sum_low = {1'b0, current_pc[3:0]} + total_len_comb;
+     
+     next_pc_comb[3:0] = sum_low[3:0];
+     // Using a MUX instead of a 28-bit adder for the high bits
+     next_pc_comb[31:4] = (sum_low[4]) ? (current_pc[31:4] + 28'd1) : current_pc[31:4];
   end
 
   always_comb begin

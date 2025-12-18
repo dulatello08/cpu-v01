@@ -52,12 +52,12 @@ module unified_memory #(
     assign if_row_base = if_addr[ADDR_WIDTH-1 : BANK_SEL_W];
     assign if_offset   = if_addr[BANK_SEL_W-1 : 0];
 
+    logic [BANK_ADDR_W-1:0] if_row_next;
+    assign if_row_next = if_row_base + BANK_ADDR_W'(1);
+
     always_comb begin
         for (int i = 0; i < BANKS; i++) begin
-            if (i < if_offset) 
-                if_bank_addrs[i] = if_row_base + 1;
-            else 
-                if_bank_addrs[i] = if_row_base;
+            if_bank_addrs[i] = (i < if_offset) ? if_row_next : if_row_base;
         end
     end
 
@@ -73,13 +73,13 @@ module unified_memory #(
     assign data_row_base = data_addr[ADDR_WIDTH-1 : BANK_SEL_W];
     assign data_offset   = data_addr[BANK_SEL_W-1 : 0];
     
+    logic [BANK_ADDR_W-1:0] data_row_next;
+    assign data_row_next = data_row_base + BANK_ADDR_W'(1);
+
     // Port B Address Calculation
     always_comb begin
         for (int i = 0; i < BANKS; i++) begin
-            if (i < data_offset) 
-                data_bank_addrs[i] = data_row_base + 1;
-            else 
-                data_bank_addrs[i] = data_row_base;
+            data_bank_addrs[i] = (i < data_offset) ? data_row_next : data_row_base;
         end
     end
 
@@ -202,7 +202,7 @@ module unified_memory #(
                 // Optional: Initialize to zero or specific pattern if file missing
                 // In simulation this might warn if file not found, which is fine.
                 // For hardware, we want this to be picked up.
-                //$readmemh($sformatf("bank%0d.mem", i), mem); 
+                $readmemh($sformatf("bank%0d.mem", i), mem); 
             end
         end
     endgenerate
