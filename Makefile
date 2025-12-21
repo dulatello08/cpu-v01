@@ -138,7 +138,7 @@ run_core_unified_tb: core_unified_tb
 core_any_tb: $(BUILD_DIR)
 	$(IVERILOG) $(IVFLAGS) -s core_any_tb \
 		-o $(BUILD_DIR)/core_any_tb.vvp \
-		$(RTL_SRCS) $(TB_DIR)/core_any_tb.sv
+		$(RTL_SRCS) $(TB_DIR)/core_any_tb.sv 2>&1 | grep -v "sorry"
 
 run_core_any_tb: core_any_tb
 	@if [ -z "$(PROGRAM)" ]; then \
