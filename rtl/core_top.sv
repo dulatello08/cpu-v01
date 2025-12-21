@@ -120,7 +120,7 @@ module core_top (
     led[6]   <= heartbeat[24];             // LED[6]: Heartbeat (toggle approx 0.6s)
     led[5]   <= cpu_halted;                // LED[5]: CPU Halted
     led[4]   <= cpu_dual_issue_active;     // LED[4]: Dual Issue Active
-    led[3:0] <= cpu_current_pc[5:2];       // LED[3:0]: PC bits [5:2] (fast toggle)
+    led[3:0] <= cpu_current_pc[3:0];       // LED[3:0]: PC bits [3:0] (fast toggle)
   end
 
 endmodule : core_top

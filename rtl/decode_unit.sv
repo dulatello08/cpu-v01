@@ -275,6 +275,7 @@ module decode_unit
       OP_B, OP_JSR: begin
         // Unconditional branch/jump (32-bit address)
         branch_target = {byte2, byte3, byte4, byte5};
+        immediate = branch_target;
       end
       
       OP_BE, OP_BNE, OP_BLT, OP_BGT, OP_BRO: begin
@@ -286,6 +287,7 @@ module decode_unit
           // Other branches have rd, rn, label
           branch_target = {byte4, byte5, byte6, byte7};
         end
+        immediate = branch_target;
       end
       
       default: begin
