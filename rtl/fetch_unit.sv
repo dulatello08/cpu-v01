@@ -60,6 +60,8 @@ module fetch_unit
   logic         buf_lo_valid;
   logic [31:0]  buf_base_addr;// Base address of buf_hi
   logic [31:0]  current_pc;   // Current instruction pointer
+  logic         pending_hi_fetch;
+  logic         pending_lo_fetch;
 
   logic [255:0] buffer;
   assign buffer = {buf_hi, buf_lo}; // Big Endian: hi is lower address (earlier bytes)
@@ -76,116 +78,70 @@ module fetch_unit
     STEADY      // Both buffers valid
   } state_e;
   
+  typedef enum logic [1:0] {REQ_NONE, REQ_HI, REQ_LO} req_dest_e;
+
   state_e state, state_next;
   
   logic [31:0] req_addr;      // Next address to request
   logic        req_valid;     // Request output valid
+  req_dest_e   req_dest;      // Destination for the request response
   
   // PC Update Logic (Combinational Next PC)
-  logic [31:0] next_pc_comb;
-  logic [4:0]  total_consumed_len;
-  
-  // Calc next PC based on *predicted* consumption this cycle
-  // (We use feedback 'consumed_count' for state update, but for *this* cycle's logic
-  //  we need to know what we are providing).
-  // Actually, standard CPU pipeline: Fetch presents valid data. Decode consumes it.
-  // Next cycle, Fetch updates PC based on consumption.
-  // So 'current_pc' is stable during the cycle. Update happens at clock edge.
-  
-  // Logic to handle "Shift" (Moving from Hi to Lo block)
-  // Shift condition: The new PC (after consumption) is >= buf_base_addr + 16
   logic [31:0] pc_after_consume;
-  logic [31:0] correct_pc_from_issue;
+  logic [4:0]  consumed_len;
+  logic [31:0] next_block_addr;
+  logic        shift_predicted;
+  logic [31:0] feedback_pc_base;
+  logic        need_hi_fetch;
+  logic        need_lo_fetch;
+  logic        prefetch_next;
   
-  logic shift_needed;
-  logic branch_flush;
-  logic flush_speculation;
-
   always_comb begin
-      // Calculate where PC will be next cycle if we consume what issue says
-      logic [4:0] cons_len;
-      cons_len = 0;
-      if (consumed_count >= 1) cons_len += id_inst_len_0;
-      if (consumed_count == 2) cons_len += id_inst_len_1;
-      
-      pc_after_consume = id_pc + {27'h0, cons_len};
-      correct_pc_from_issue = pc_after_consume; // Alias for clarity
+    consumed_len = 5'd0;
+    if (consumed_count >= 1) consumed_len += id_inst_len_0;
+    if (consumed_count == 2) consumed_len += id_inst_len_1;
+
+    // Use the committed PC from ID when available to stay aligned with issue feedback.
+    feedback_pc_base = id_valid ? id_pc : current_pc;
+    pc_after_consume = feedback_pc_base + {27'h0, consumed_len};
+    next_block_addr = pc_after_consume & 32'hFFFF_FFF0;
+    shift_predicted = (next_block_addr == (buf_base_addr + 32'd16));
+
+    need_hi_fetch = !buf_hi_valid && !pending_hi_fetch;
+    need_lo_fetch = buf_hi_valid && !buf_lo_valid && !pending_lo_fetch;
+    // With a 16-byte maximum two-instruction window, we only prefetch one block ahead.
+    // Avoid prefetching while stalled so we don't clobber a still-needed LO block.
+    prefetch_next = buf_hi_valid && buf_lo_valid && shift_predicted &&
+                    !pending_lo_fetch && !stall;
   end
 
-  // Detect PC correction (Branch or mis-prediction/wait)
-  // If id_valid is high, Issue stage is telling us the TRUE state.
-  // If (current_pc != id_pc), we are out of sync (pipeline flush/stall catchup).
-  // But normally fetch is ahead.
-  // Wait, the interface here: "consumed_count" tells us how many instructions
-  // from THIS cycle's 'inst_data' were accepted.
-  // So 'current_pc' should advance by 'consumed_len'.
-  
-  // Let's implement the standard advance logic:
-  // If !stall and we provided valid instructions:
-  //   next_pc = current_pc + len(inst0) [+ len(inst1)]
-  // We don't have 'consumed_count' for the CURRENT cycle's output yet.
-  // 'consumed_count' is from the PREVIOUS cycle's decode, effectively?
-  // No, usually it's combinational feedback or from latch.
-  // Assuming 'consumed_count' is feedback from the Decode stage consuming valid_0/valid_1.
-  // But normally that's a registered "consumed" signal from the previous cycle?
-  // "Feedback from Issue Stage": likely combinational or registered.
-  // Let's assume standard behavior:
-  // We present PC. Decode sees PC. Decode says "I took 2".
-  // Next cycle, PC += length(2).
-  
-  logic [31:0] pc_next;
-  logic        perform_shift;
-  logic [31:0] next_req_addr;
-  
+  // Request scheduling: prefer filling HI, then LO, then speculative next block.
   always_comb begin
-    state_next = state;
     req_valid = 1'b0;
     req_addr = 32'h0;
-    perform_shift = 1'b0;
-    next_req_addr = 32'h0;
+    req_dest = REQ_NONE;
+    state_next = state;
 
-    // Default req address depends on state
-    case (state)
-      IDLE: begin
-         if (!stall) state_next = FETCH_HI;
-      end
-      
-      FETCH_HI: begin
-         // We are fetching 'buf_base_addr'
-         req_valid = 1'b1;
-         req_addr = buf_base_addr;
-         
-         if (mem_ack) begin
-            // Got HI. Next need LO.
-            state_next = FETCH_LO_WAIT;
-         end
-      end
-      
-      FETCH_LO_WAIT: begin
-         // Issue LO request, ignore Ack (stale/latency)
-         req_valid = 1'b1;
-         req_addr = buf_base_addr + 32'h10;
-         state_next = FETCH_LO;
-      end
-      
-      FETCH_LO: begin
-         // We have HI. Fetching LO (buf_base_addr + 16)
-         req_valid = 1'b1;
-         req_addr = buf_base_addr + 32'h10;
-         
-         if (mem_ack) begin
-            state_next = STEADY;
-         end
-      end
-      
-      STEADY: begin
-         // Buffer Full. Do nothing unless we consume/shift.
-         // If we shift, we invalidate LO (it becomes HI) and go to FETCH_LO_WAIT
-         // We can pipeline this: if shifting, immediately request Next.
-      end
-      
-      default: state_next = IDLE;
-    endcase
+    if (need_hi_fetch) begin
+      req_valid = 1'b1;
+      req_addr = buf_base_addr;
+      req_dest = REQ_HI;
+      state_next = FETCH_HI;
+    end else if (need_lo_fetch) begin
+      req_valid = 1'b1;
+      req_addr = buf_base_addr + 32'h10;
+      req_dest = REQ_LO;
+      state_next = FETCH_LO;
+    end else if (prefetch_next) begin
+      req_valid = 1'b1;
+      req_addr = buf_base_addr + 32'h20;
+      req_dest = REQ_LO;
+      state_next = FETCH_LO;
+    end else begin
+      if (buf_hi_valid && buf_lo_valid) state_next = STEADY;
+      else if (buf_hi_valid) state_next = FETCH_LO_WAIT;
+      else state_next = IDLE;
+    end
   end
   
   // ============================================================================
@@ -195,23 +151,6 @@ module fetch_unit
   logic [3:0] pc_offset;
   assign pc_offset = current_pc[3:0]; // Offset within buf_hi
   
-  // We need to verify if 'current_pc' is within [buf_base, buf_base+31]
-  // But simpler: We trust 'current_pc' is in range because we shift when it exits.
-  // EXCEPT: Buffer might be empty/invalid initially.
-  
-  logic buffer_has_data;
-  // We have enough data if:
-  // 1. buf_hi_valid is TRUE.
-  // 2. We are not asking for data beyond what's valid.
-  //    - If buf_lo_valid is FALSE, we can only serve if instruction fits in buf_hi.
-  //    - (Strictly: buffer_hi captures [0..15]. If pc_offset=14, we need 14..22?
-  //      That crosses to LO. If LO invalid, we can't serve).
-  
-  logic [255:0] buffer_shifted;
-  // Logically: buffer >> (pc_offset * 8)
-  // But specific byte extraction is cheaper.
-  
-  // Helper to extract 9 bytes at offset
   // Helper to extract 9 bytes at offset
   function automatic logic [71:0] extract_9_bytes(input logic [255:0] buf_in, input logic [4:0] off);
       // Byte 0 of buffer is at [255:248]
@@ -253,7 +192,7 @@ module fetch_unit
       inst0_len_knowable = 0;
       inst1_len_knowable = 0;
       
-      if (buf_hi_valid && (current_pc[31:4] == buf_base_addr[31:4]) && !feedback_wait) begin
+      if (buf_hi_valid && (current_pc[31:4] == buf_base_addr[31:4])) begin
           // Inst 0 Length knowability: Need Byte 0 (Spec) and Byte 1 (Opcode).
           // Byte 1 of inst0 is at (pc_offset + 1). 
           if (pc_offset < 15) begin
@@ -330,105 +269,91 @@ module fetch_unit
   // Sequential Logic
   // ============================================================================
   
-  logic feedback_wait;
+  req_dest_e resp_dest_q;
 
   always_ff @(posedge clk) begin
-    logic [4:0] adv_len;
-    logic [31:0] pc_new;
-    logic [31:0] offset_check;
-    logic       n_hi_valid;
-    logic       n_lo_valid;
     logic [127:0] n_buf_hi;
     logic [127:0] n_buf_lo;
-    logic [31:0]  n_buf_base;
-    logic [31:0]  next_block_addr;
+    logic        n_hi_valid;
+    logic        n_lo_valid;
+    logic [31:0] n_buf_base;
+    logic        n_pending_hi;
+    logic        n_pending_lo;
+    req_dest_e   resp_dest_n;
 
     if (rst) begin
         state <= IDLE;
         current_pc <= 32'h0; // Reset vector 0
         buf_base_addr <= 32'h0;
-        buf_hi_valid <= 0;
-        buf_lo_valid <= 0;
-        feedback_wait <= 0;
+        buf_hi_valid <= 1'b0;
+        buf_lo_valid <= 1'b0;
+        pending_hi_fetch <= 1'b0;
+        pending_lo_fetch <= 1'b0;
+        resp_dest_q <= REQ_NONE;
         
     end else if (branch_taken) begin
         // Flush and Branch
         state <= FETCH_HI;
         current_pc <= branch_target;
         buf_base_addr <= branch_target & 32'hFFFF_FFF0; // Align 16
-        buf_hi_valid <= 0;
-        buf_lo_valid <= 0;
-        feedback_wait <= 0;
+        buf_hi_valid <= 1'b0;
+        buf_lo_valid <= 1'b0;
+        pending_hi_fetch <= 1'b0;
+        pending_lo_fetch <= 1'b0;
+        resp_dest_q <= REQ_NONE;
         
-    end else if (!stall) begin
-        // Update Feedback Wait
-        if (valid_0) feedback_wait <= 1;
-        else feedback_wait <= 0;
-
-        // 1. Update Buffer Content (Memory Responses)
-        if (state == FETCH_HI && mem_ack) begin
-            buf_hi <= mem_rdata;
-            buf_hi_valid <= 1;
-        end
-        
-        if (state == FETCH_LO && mem_ack) begin
-            buf_lo <= mem_rdata;
-            buf_lo_valid <= 1;
-        end
-        
-        // 2. Update PC (Consumption)
-        adv_len = 0;
-        
-        // Use lengths from ID stage (which are being consumed)
-        if (consumed_count >= 1) adv_len += id_inst_len_0;
-        if (consumed_count == 2) adv_len += id_inst_len_1;
-
-        
-        pc_new = current_pc + {27'h0, adv_len};
-         
-        current_pc <= pc_new;
-
-        // 3. Handle Buffer Shift / Refill
-        // 3. Handle Buffer Shift / Refill
-        // Calculate the 16-byte aligned block address for the NEW PC
-        // We use 32'hFFFF_FFF0 to align to 16 bytes
-        next_block_addr = pc_new & 32'hFFFF_FFF0; 
-
-        // Parallel update logic
-        n_hi_valid = buf_hi_valid;
-        n_lo_valid = buf_lo_valid;
+    end else begin
+        // Defaults
         n_buf_hi   = buf_hi;
         n_buf_lo   = buf_lo;
+        n_hi_valid = buf_hi_valid;
+        n_lo_valid = buf_lo_valid;
         n_buf_base = buf_base_addr;
-        
-        // Update with memory responses (if any) before processing shift
-        if (state == FETCH_HI && mem_ack) begin
-            n_buf_hi = mem_rdata;
-            n_hi_valid = 1;
+        n_pending_hi = pending_hi_fetch;
+        n_pending_lo = pending_lo_fetch;
+        resp_dest_n = resp_dest_q;
+
+        // Capture memory responses even when stalled
+        if (mem_ack) begin
+            case (resp_dest_q)
+                REQ_HI: begin
+                    n_buf_hi = mem_rdata;
+                    n_hi_valid = 1'b1;
+                    n_pending_hi = 1'b0;
+                end
+                REQ_LO: begin
+                    n_buf_lo = mem_rdata;
+                    n_lo_valid = 1'b1;
+                    n_pending_lo = 1'b0;
+                end
+                default: ;
+            endcase
         end
-        if (state == FETCH_LO && mem_ack) begin
-            n_buf_lo = mem_rdata;
-            n_lo_valid = 1;
+
+        // Track destination for next acknowledge
+        if (mem_req) begin
+            resp_dest_n = req_dest;
+            if (req_dest == REQ_HI) n_pending_hi = 1'b1;
+            if (req_dest == REQ_LO) n_pending_lo = 1'b1;
+        end else if (mem_ack) begin
+            resp_dest_n = REQ_NONE;
         end
-        
-        // Now determine if we need to shift or jump
-        if (next_block_addr != buf_base_addr) begin
-            if (next_block_addr == buf_base_addr + 32'd16) begin
-                // Standard Shift (Next sequential block)
-                n_buf_base = next_block_addr;
-                
-                // Hi becomes old Lo (if valid)
-                n_buf_hi = n_buf_lo;
-                n_hi_valid = n_lo_valid;
-                
-                // Lo becomes invalid (need fetch)
-                n_lo_valid = 0;
-            end else begin
-                // Jumped far (branch, or >16 byte advance, or backwards)
-                // Invalidate both to be safe and force re-fetch
-                n_buf_base = next_block_addr;
-                n_hi_valid = 0;
-                n_lo_valid = 0;
+
+        if (!stall) begin
+            current_pc <= pc_after_consume;
+
+            // Buffer shift based on the post-consume PC (max two-instruction window is 16 bytes)
+            if (next_block_addr != n_buf_base) begin
+                if (next_block_addr == n_buf_base + 32'd16) begin
+                    n_buf_base = next_block_addr;
+                    n_buf_hi = n_buf_lo;
+                    n_hi_valid = n_lo_valid;
+                    n_lo_valid = 1'b0;
+                end else begin
+                    n_buf_base = next_block_addr;
+                    n_hi_valid = 1'b0;
+                    n_lo_valid = 1'b0;
+                end
             end
         end
 
@@ -438,31 +363,15 @@ module fetch_unit
         buf_hi_valid <= n_hi_valid;
         buf_lo_valid <= n_lo_valid;
         buf_base_addr <= n_buf_base;
-        
-        // 4. Update Main State Machine
-        // Override state based on buffer status
-        if (n_hi_valid && n_lo_valid) begin
-           state <= STEADY;
-        end else if (n_hi_valid && !n_lo_valid) begin
-           // If we just gathered HI, or shifted from STEADY, we need to fetch LO.
-           // If shifting from STEADY, we need wait cycle.
-           // If coming from FSM (FETCH_HI->WAIT or WAIT->LO), trust state_next.
-           if (state == STEADY) begin
-               state <= FETCH_LO_WAIT;
-           end else begin
-               state <= state_next;
-           end
-        end else if (!n_hi_valid) begin
-           state <= FETCH_HI;
-        end else begin
-           state <= state_next;
-        end
-
+        pending_hi_fetch <= n_pending_hi;
+        pending_lo_fetch <= n_pending_lo;
+        resp_dest_q <= resp_dest_n;
+        state <= state_next;
     end
   end
 
   // Assign memory request outputs
-  assign mem_req = req_valid && !stall && !branch_taken && !rst;
+  assign mem_req = req_valid && !branch_taken && !rst;
   assign mem_addr = req_addr;
 
   // ============================================================================
