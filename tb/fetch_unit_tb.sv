@@ -27,6 +27,13 @@ module fetch_unit_tb;
   logic [3:0]   inst_len_1;
   logic [31:0]  pc_1;
   logic         valid_1;
+  
+  // Feedback from Issue Stage (new ports)
+  logic [1:0]   consumed_count;
+  logic [3:0]   id_inst_len_0;
+  logic [3:0]   id_inst_len_1;
+  logic [31:0]  id_pc;
+  logic         id_valid;
 
   // DUT Instantiation
   fetch_unit dut (
@@ -46,7 +53,12 @@ module fetch_unit_tb;
     .inst_data_1(inst_data_1),
     .inst_len_1(inst_len_1),
     .pc_1(pc_1),
-    .valid_1(valid_1)
+    .valid_1(valid_1),
+    .consumed_count(consumed_count),
+    .id_inst_len_0(id_inst_len_0),
+    .id_inst_len_1(id_inst_len_1),
+    .id_pc(id_pc),
+    .id_valid(id_valid)
   );
 
   // Clock Generation
@@ -110,7 +122,11 @@ module fetch_unit_tb;
     branch_taken = 0;
     branch_target = 0;
     stall = 0;
-    stall = 0;
+    consumed_count = 2'd0;
+    id_inst_len_0 = 4'd0;
+    id_inst_len_1 = 4'd0;
+    id_pc = 32'd0;
+    id_valid = 1'b0;
     
     // Reset
     #20;

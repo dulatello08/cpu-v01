@@ -160,10 +160,9 @@ module core_any_tb;
       $display("         Decode: We0=%b Rd0=%h | Rs1_1=%h Rs2_1=%h",
                dut.decode_0.rd_we, dut.decode_0.rd_addr,
                dut.decode_1.rs1_addr, dut.decode_1.rs2_addr);
-      $display("         Branch1: Taken=%b OpA=%h OpB=%h | Branch0: Taken=%b",
-               dut.execute.branch_taken_1,
-               dut.execute.operand_a_1, dut.execute.operand_b_1,
-               dut.execute.branch_taken_0);
+      $display("         Branch0: Taken=%b OpA=%h OpB=%h",
+               dut.execute.branch_taken_0,
+               dut.execute.operand_a_0, dut.execute.operand_b_0);
       $display("         ID_Len: L0=%d L1=%d | ConsumedCount=%d", 
                dut.if_id_out_0.inst_len, dut.if_id_out_1.inst_len,
                dut.fetch.consumed_count);
