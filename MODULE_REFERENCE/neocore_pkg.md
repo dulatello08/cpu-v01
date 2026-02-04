@@ -98,7 +98,7 @@ parameter int NUM_REGS = 16;       // 16 general-purpose registers
 
 ## Pipeline Stage Structures
 
-### IF/ID Pipeline Register
+### IB Entry (Instruction Buffer)
 
 ```verilog
 typedef struct packed {
@@ -357,4 +357,3 @@ The package itself is not testable in isolation. Verification occurs through:
 - Ensuring consistency across modules
 
 All RTL files import this package and depend on its definitions.
-

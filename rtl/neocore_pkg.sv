@@ -94,7 +94,7 @@ package neocore_pkg;
   // Pipeline Stage Structures
   // ============================================================================
   
-  // Instruction Fetch to Decode (IF/ID) Pipeline Register
+  // Instruction Buffer (IB) Entry
   typedef struct packed {
     logic        valid;           // Instruction valid
     logic [31:0] pc;              // Program counter for this instruction

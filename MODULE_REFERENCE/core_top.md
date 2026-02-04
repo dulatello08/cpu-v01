@@ -9,6 +9,7 @@ Integrates all pipeline stages, hazard detection, forwarding logic, and control 
 ```
 core_top
 ├── fetch_unit (instruction fetch with buffer)
+├── IB queue (instruction buffer, 6 entries)
 ├── decode_unit x2 (dual decoders)
 ├── issue_unit (dual-issue controller)
 ├── register_file (16x16-bit with 4R/2W ports)
@@ -16,7 +17,7 @@ core_top
 ├── execute_stage (ALU, multiply, branch units x2)
 ├── memory_stage (load/store with arbitration)
 ├── writeback_stage (register write and flag update)
-└── pipeline_regs x8 (IF/ID, ID/EX, EX/MEM, MEM/WB x2 each)
+└── pipeline_regs x6 (ID/EX, EX/MEM, MEM/WB x2 each)
 ```
 
 ## Interface
@@ -63,17 +64,17 @@ core_top
 - fetch_unit fetches variable-length instructions
 - Maintains 32-byte buffer for dual-issue
 - Outputs up to 2 instructions per cycle
-- **CRITICAL**: Receives `dual_issue` signal from issue_unit to determine byte consumption
+- **CRITICAL**: Advances PC only on IB acceptance (no replay)
 
-### 2. IF/ID Pipeline Registers
-- Two registers (if_id_reg_0, if_id_reg_1)
-- Hold fetched instructions, PC, length
+### 2. Instruction Buffer (IB)
+- 6-entry queue between IF and ID
+- Accepts up to 2 instructions per cycle
+- Dequeues up to 2 instructions per cycle
 - Flush on branch taken
 
 ### 3. Decode Stage (ID)
 - Two decode_unit instances decode in parallel
 - issue_unit determines if dual-issue possible
-- **CRITICAL**: issue_unit `dual_issue` output connected to fetch_unit input
 - register_file provides 4 read ports for operands
 
 ### 4. ID/EX Pipeline Registers  
@@ -147,33 +148,28 @@ Branches resolve in EX stage:
 - Human-readable memory dumps
 - Network byte order compatible
 
-### Why 5 Stages?
-- Classic RISC balance
-- Well-understood hazard handling
-- Achievable timing on target FPGA
+### Why 6 Stages?
+- Adds an **Instruction Buffer (IB)** stage to decouple fetch from backend stalls
+- Improves dual‑issue stability under variable-length instructions
+- Keeps timing manageable on target FPGA
 
 ## Critical Signal Connections
 
-### Dual-Issue Feedback Loop (FIXED)
-The `dual_issue` signal from `issue_unit` **MUST** be connected to `fetch_unit.dual_issue` input:
+### Fetch ↔ IB Accept Loop
+The fetch unit **must** advance based on how many instructions the IB accepts each cycle:
 
 ```systemverilog
-// In core_top.sv:
-logic dual_issue;  // Signal declared
-
-issue_unit issue (
-  // ... inputs
-  .dual_issue(dual_issue)  // Output from issue_unit
-);
+// In cpu_core.sv (conceptual):
+logic [1:0] accept_count;  // 0/1/2 instructions accepted into IB
 
 fetch_unit fetch (
   // ... inputs
-  .dual_issue(dual_issue),  // Input to fetch_unit (CRITICAL!)
+  .accept_count(accept_count),
   // ... outputs
 );
 ```
 
-**Why**: Fetch must know the actual dual-issue decision to consume the correct number of bytes from the instruction buffer. Without this connection, PC advances incorrectly.
+**Why**: Fetch only advances when instructions are enqueued into the IB. This prevents PC drift when the backend stalls.
 
 ## Known Limitations
 
@@ -193,4 +189,3 @@ fetch_unit fetch (
 ## Verification
 
 See core_unified_tb.sv for integration tests.
-

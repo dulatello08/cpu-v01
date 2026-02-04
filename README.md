@@ -2,12 +2,12 @@
 
 ## Overview
 
-The NeoCore16x32 is a **dual-issue, 5-stage pipelined CPU** implemented in SystemVerilog for FPGA synthesis. It features a **Von Neumann architecture** with unified memory for both instructions and data, using **big-endian byte ordering** throughout. The CPU is capable of executing up to two instructions per cycle when hazard conditions permit.
+The NeoCore16x32 is a **dual-issue, 6-stage pipelined CPU** implemented in SystemVerilog for FPGA synthesis. It features a **Von Neumann architecture** with unified memory for both instructions and data, using **big-endian byte ordering** throughout. The CPU is capable of executing up to two instructions per cycle when hazard conditions permit.
 
 ### Key Features
 
 - **Dual-Issue Superscalar Execution**: Up to 2 instructions issued per cycle
-- **5-Stage Classic RISC Pipeline**: Fetch, Decode, Execute, Memory, Writeback
+- **6-Stage Classic Pipeline**: Fetch, IB, Decode, Execute, Memory, Writeback
 - **Variable-Length Instructions**: 2 to 9 bytes (16 to 72 bits)
 - **16-bit Data Path**: 16-bit general-purpose registers
 - **32-bit Address Space**: Full 4 GB addressable memory
@@ -39,27 +39,33 @@ The NeoCore16x32 is a **dual-issue, 5-stage pipelined CPU** implemented in Syste
    - Fetches up to 16 bytes from memory per cycle
    - Maintains 32-byte instruction buffer
    - Pre-decodes instruction boundaries for dual-issue
-   - Handles PC updates and branch targets
+   - Handles PC updates on IB acceptance and branch targets
 
-2. **Instruction Decode (ID)**
+2. **Instruction Buffer (IB)**
+   - 6-entry queue between fetch and decode
+   - Accepts up to 2 instructions per cycle
+   - Dequeues up to 2 instructions per cycle
+   - Flushes on taken branches
+
+3. **Instruction Decode (ID)**
    - Decodes opcode, specifier, and operands
    - Extracts immediates and addresses (big-endian)
    - Reads source registers from register file
    - Dual-issue logic determines which instructions to issue
 
-3. **Execute (EX)**
+4. **Execute (EX)**
    - Dual ALU units for parallel arithmetic/logic operations
    - Dual multiply units for UMULL/SMULL
    - Branch condition evaluation
    - Operand forwarding from later pipeline stages
 
-4. **Memory Access (MEM)**
+5. **Memory Access (MEM)**
    - Handles load/store operations
    - Arbitrates between two potential memory requests
    - Maintains big-endian byte ordering
    - Supports byte, halfword, and word transfers
 
-5. **Write-Back (WB)**
+6. **Write-Back (WB)**
    - Writes results to register file
    - Updates CPU flags (Zero, Overflow)
    - Handles dual-write arbitration

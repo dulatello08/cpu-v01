@@ -337,7 +337,7 @@ end
 // Check for invalid opcode
 always @(posedge clk) begin
   if (decode_valid_0 && decode_itype_0 == ITYPE_INVALID) begin
-    $error("Invalid opcode detected: 0x%h at PC 0x%h", decode_opcode_0, if_id_out_0.pc);
+    $error("Invalid opcode detected: 0x%h at PC 0x%h", decode_opcode_0, ib_out_0.pc);
     $finish;
   end
 end
@@ -581,4 +581,3 @@ Include any relevant issue numbers.
 - **ULX3S Board**: https://github.com/emard/ulx3s
 
 For questions or issues, consult the repository issue tracker.
-

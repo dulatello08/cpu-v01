@@ -137,8 +137,8 @@ module core_any_tb;
       $display("         Fetch: Spec0=%h Op0=%h | Spec1=%h Op1=%h",
                dut.fetch.spec_0, dut.fetch.op_0, dut.fetch.spec_1, dut.fetch.op_1);
 
-      $display("         Consumed=%0d CurrentPC=%h DualIssue=%b (from issue=%b) MemReq=%b MemAddr=%h",
-               dut.fetch.consumed_count, dut.fetch.current_pc, dut.dual_issue,
+      $display("         Accept=%0d CurrentPC=%h DualIssue=%b (from issue=%b) MemReq=%b MemAddr=%h",
+               dut.accept_count, dut.fetch.current_pc, dut.dual_issue,
                dut.issue.dual_issue,
                dut.fetch.mem_req, dut.fetch.mem_addr);
                
@@ -153,9 +153,9 @@ module core_any_tb;
                dut.fetch.current_block[12], dut.fetch.current_block[13],
                dut.fetch.current_block[14], dut.fetch.current_block[15]);
 
-      $display("         Pipeline: Stall=%b FlushID=%b IF_ID0_Valid=%b Dec0_Valid=%b Is0=%b Is1=%b",
+      $display("         Pipeline: Stall=%b FlushID=%b IB0_Valid=%b Dec0_Valid=%b Is0=%b Is1=%b",
                dut.stall_pipeline, dut.flush_id, 
-               dut.if_id_out_0.valid, dut.decode_valid_0,
+               dut.ib_out_0.valid, dut.decode_valid_0,
                dut.issue_inst0, dut.issue_inst1);
       $display("         Decode: We0=%b Rd0=%h | Rs1_1=%h Rs2_1=%h",
                dut.decode_0.rd_we, dut.decode_0.rd_addr,
@@ -163,9 +163,9 @@ module core_any_tb;
       $display("         Branch0: Taken=%b OpA=%h OpB=%h",
                dut.execute.branch_taken_0,
                dut.execute.operand_a_0, dut.execute.operand_b_0);
-      $display("         ID_Len: L0=%d L1=%d | ConsumedCount=%d", 
-               dut.if_id_out_0.inst_len, dut.if_id_out_1.inst_len,
-               dut.fetch.consumed_count);
+      $display("         IB_Len: L0=%d L1=%d | Accept=%d", 
+               dut.ib_out_0.inst_len, dut.ib_out_1.inst_len,
+               dut.accept_count);
 
     end
   end

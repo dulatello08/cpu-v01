@@ -23,7 +23,7 @@ The NeoCore16x32 is a modern 16-bit CPU architecture with 32-bit addressing capa
 
 1. **Performance through Parallelism**: Dual-issue superscalar execution
 2. **Code Density**: Variable-length instructions minimize program size
-3. **Simplicity**: Classic 5-stage RISC pipeline with in-order execution
+3. **Simplicity**: Classic 6-stage pipeline (IF→IB→ID→EX→MEM→WB) with in-order execution
 4. **FPGA-Friendly**: Block RAM utilization, no complex CAM structures
 5. **Deterministic**: Predictable timing for real-time applications
 
@@ -484,10 +484,10 @@ Flags are updated in the **Write-Back (WB) stage**, so they reflect the result o
 
 ## Pipeline Architecture
 
-The NeoCore16x32 implements a classic **5-stage pipeline**:
+The NeoCore16x32 implements a classic **6-stage pipeline**:
 
 ```
-IF  ->  ID  ->  EX  ->  MEM  ->  WB
+IF  ->  IB  ->  ID  ->  EX  ->  MEM  ->  WB
 ```
 
 ### Pipeline Stage Descriptions
@@ -502,13 +502,26 @@ IF  ->  ID  ->  EX  ->  MEM  ->  WB
 - Maintain 32-byte circular buffer of fetched bytes
 - Extract first instruction (specifier + opcode → determine length)
 - Extract second instruction for dual-issue
-- Update PC based on consumed instruction bytes
+- Update PC based on **accepted** instruction bytes (IB enqueue)
 
 **Output**: Two potential instructions (inst_data_0, inst_data_1) with PC and length
 
 **Key Feature**: Pre-decodes instruction boundaries to enable dual-issue without stalling.
 
-#### 2. Instruction Decode (ID)
+#### 2. Instruction Buffer (IB)
+
+**Function**: Queue fetched instructions between IF and ID  
+**Module**: cpu_core.sv (IB queue logic)
+
+**Operations**:
+- Accept up to two instructions per cycle from IF
+- Dequeue up to two instructions per cycle to ID (based on issue decisions)
+- Maintain a 6-entry FIFO-like queue with shift behavior
+- Flush on branch taken
+
+**Output**: Two queued instructions (ib_out_0, ib_out_1) for decode
+
+#### 3. Instruction Decode (ID)
 
 **Function**: Decode instructions and read operands  
 **Modules**: decode_unit.sv, issue_unit.sv, register_file.sv
@@ -524,7 +537,7 @@ IF  ->  ID  ->  EX  ->  MEM  ->  WB
 
 **Dual-Issue Logic**: The issue_unit checks for hazards between the two instructions and decides if both can proceed.
 
-#### 3. Execute (EX)
+#### 4. Execute (EX)
 
 **Function**: Perform arithmetic, logic, and branch evaluation  
 **Modules**: execute_stage.sv, alu.sv, multiply_unit.sv, branch_unit.sv
@@ -541,7 +554,7 @@ IF  ->  ID  ->  EX  ->  MEM  ->  WB
 
 **Forwarding**: Operand forwarding MUXes select data from EX, MEM, or WB stages to resolve RAW hazards.
 
-#### 4. Memory Access (MEM)
+#### 5. Memory Access (MEM)
 
 **Function**: Access unified memory for load/store  
 **Module**: memory_stage.sv
@@ -557,7 +570,7 @@ IF  ->  ID  ->  EX  ->  MEM  ->  WB
 
 **Note**: Only one memory operation can complete per cycle. If both instructions need memory, the second stalls.
 
-#### 5. Write-Back (WB)
+#### 6. Write-Back (WB)
 
 **Function**: Write results to register file and update flags  
 **Module**: writeback_stage.sv
@@ -572,9 +585,9 @@ IF  ->  ID  ->  EX  ->  MEM  ->  WB
 
 ### Pipeline Registers
 
-Data flows between stages through pipeline registers:
+Data flows between stages through pipeline registers and the IB queue:
 
-- **IF/ID**: Holds fetched instructions
+- **IB**: Holds fetched instructions awaiting decode (6-entry queue)
 - **ID/EX**: Holds decoded control signals and register operands
 - **EX/MEM**: Holds ALU results and memory operation info
 - **MEM/WB**: Holds final results ready for write-back
@@ -588,23 +601,23 @@ Each register has:
 Example execution of three independent ADD instructions:
 
 ```
-Cycle:    1      2      3      4      5      6      7      8
-         +------+------+------+------+------+------+------+------+
-ADD R1   | IF   | ID   | EX   | MEM  | WB   |      |      |      |
-         +------+------+------+------+------+------+------+------+
-ADD R2   |      | IF   | ID   | EX   | MEM  | WB   |      |      |
-         +------+------+------+------+------+------+------+------+
-ADD R3   |      |      | IF   | ID   | EX   | MEM  | WB   |      |
-         +------+------+------+------+------+------+------+------+
+Cycle:    1      2      3      4      5      6      7      8      9
+         +------+------+------+------+------+------+------+------+------+
+ADD R1   | IF   | IB   | ID   | EX   | MEM  | WB   |      |      |      |
+         +------+------+------+------+------+------+------+------+------+
+ADD R2   |      | IF   | IB   | ID   | EX   | MEM  | WB   |      |      |
+         +------+------+------+------+------+------+------+------+------+
+ADD R3   |      |      | IF   | IB   | ID   | EX   | MEM  | WB   |      |
+         +------+------+------+------+------+------+------+------+------+
 ```
 
 Under ideal dual-issue:
 
 ```
-Cycle:    1      2      3      4      5      6
-         +------+------+------+------+------+------+
-ADD R1   | IF   | ID   | EX   | MEM  | WB   |      |
-         +------+------+------+------+------+------+
+Cycle:    1      2      3      4      5      6      7
+         +------+------+------+------+------+------+------+
+ADD R1   | IF   | IB   | ID   | EX   | MEM  | WB   |      |
+         +------+------+------+------+------+------+------+
 ADD R2   | IF   | ID   | EX   | MEM  | WB   |      |
          +------+------+------+------+------+------+
 ADD R3   |      | IF   | ID   | EX   | MEM  | WB   |
@@ -702,7 +715,7 @@ The issue_unit.sv module examines both decoded instructions and outputs:
 - **issue_inst1**: TRUE only if both can dual-issue
 - **dual_issue**: TRUE if both are being issued this cycle
 
-If dual-issue fails, instruction 0 proceeds and instruction 1 waits in the IF/ID register for the next cycle.
+If dual-issue fails, instruction 0 proceeds and instruction 1 remains in the IB queue for the next cycle.
 
 ### Performance Impact
 
@@ -757,7 +770,7 @@ The NeoCore16x32 architecture combines:
 - **Big-endian byte ordering** consistently throughout
 - **Von Neumann memory** with unified code/data space
 - **Dual-issue superscalar** execution for performance
-- **5-stage pipeline** with hardware hazard detection
+- **6-stage pipeline** with hardware hazard detection
 
 The architecture is designed for FPGA implementation with emphasis on:
 - Synthesizable RTL
@@ -766,4 +779,3 @@ The architecture is designed for FPGA implementation with emphasis on:
 - Straightforward microarchitecture
 
 This document defines the **architectural specification** - what the programmer sees. For details on how this is implemented in RTL, see [MICROARCHITECTURE.md](MICROARCHITECTURE.md).
-

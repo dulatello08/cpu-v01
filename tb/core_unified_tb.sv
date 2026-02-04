@@ -210,12 +210,12 @@ module core_unified_tb;
 //               dut.fetch.spec_1, dut.fetch.op_1, dut.fetch.inst_len_1);
       $display("          Fetch: valid0=%b valid1=%b dual_issue=%b",
                dut.fetch_valid_0, dut.fetch_valid_1, dut.dual_issue_active);
-      $display("          IF/ID0: valid=%b pc=0x%h opcode=0x%02h spec=0x%02h",
-               dut.if_id_out_0.valid, dut.if_id_out_0.pc,
-               dut.if_id_out_0.inst_data[63:56], dut.if_id_out_0.inst_data[71:64]);
-      $display("          IF/ID1: valid=%b pc=0x%h opcode=0x%02h spec=0x%02h",
-               dut.if_id_out_1.valid, dut.if_id_out_1.pc,
-               dut.if_id_out_1.inst_data[63:56], dut.if_id_out_1.inst_data[71:64]);
+      $display("          IB0: valid=%b pc=0x%h opcode=0x%02h spec=0x%02h",
+               dut.ib_out_0.valid, dut.ib_out_0.pc,
+               dut.ib_out_0.inst_data[63:56], dut.ib_out_0.inst_data[71:64]);
+      $display("          IB1: valid=%b pc=0x%h opcode=0x%02h spec=0x%02h",
+               dut.ib_out_1.valid, dut.ib_out_1.pc,
+               dut.ib_out_1.inst_data[63:56], dut.ib_out_1.inst_data[71:64]);
       $display("          ID/EX0: valid=%b pc=0x%h is_halt=%b rd_addr=%d rd_we=%b",
                dut.id_ex_out_0.valid, dut.id_ex_out_0.pc, dut.id_ex_out_0.is_halt,
                dut.id_ex_out_0.rd_addr, dut.id_ex_out_0.rd_we);

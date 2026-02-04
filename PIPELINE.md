@@ -15,15 +15,15 @@
 
 ## Pipeline Overview
 
-The NeoCore16x32 implements a **classic 5-stage RISC pipeline** with dual-issue capability. The pipeline is in-order, meaning instructions are issued and completed in program order (though execution may overlap).
+The NeoCore16x32 implements a **classic 6-stage pipeline** with dual-issue capability. The pipeline is in-order, meaning instructions are issued and completed in program order (though execution may overlap).
 
 ### Pipeline Stage Summary
 
 ```
-+======+    +======+    +======+    +======+    +======+
-|  IF  | -> |  ID  | -> |  EX  | -> | MEM  | -> |  WB  |
-+======+    +======+    +======+    +======+    +======+
-Fetch     Decode    Execute   Memory   Write-back
++======+    +======+    +======+    +======+    +======+    +======+
+|  IF  | -> |  IB  | -> |  ID  | -> |  EX  | -> | MEM  | -> |  WB  |
++======+    +======+    +======+    +======+    +======+    +======+
+Fetch     Buffer    Decode    Execute   Memory    Write-back
 ```
 
 Each stage performs specific operations:
@@ -31,6 +31,7 @@ Each stage performs specific operations:
 | Stage | Name | Module | Primary Function |
 |-------|------|--------|------------------|
 | **IF** | Instruction Fetch | fetch_unit.sv | Fetch instructions from memory |
+| **IB** | Instruction Buffer | cpu_core.sv | Queue fetched instructions (6 entries) |
 | **ID** | Instruction Decode | decode_unit.sv, issue_unit.sv | Decode and issue instructions |
 | **EX** | Execute | execute_stage.sv | ALU, multiply, branch evaluation |
 | **MEM** | Memory Access | memory_stage.sv | Load/store operations |
@@ -41,7 +42,7 @@ Each stage performs specific operations:
 1. **Dual-Issue Capability**: Two instructions can progress through each stage simultaneously
 2. **Hardware Hazard Detection**: Automatic stall generation for data hazards
 3. **Data Forwarding**: Results forwarded from later stages to earlier stages
-4. **Branch Resolution in EX**: Branches resolved early to minimize penalty
+4. **Branch Resolution in EX**: Branches resolved in EX; IB adds one stage of latency
 5. **Big-Endian Throughout**: All pipeline stages respect big-endian byte ordering
 
 ---
@@ -110,13 +111,13 @@ Both can be fetched if buffer_valid >= 9
 
 #### PC Update Logic
 
-The PC advances by the number of consumed instruction bytes:
+The PC advances by the number of **accepted** instruction bytes (IB enqueue):
 
 ```
-Single-issue:  pc_next = pc + inst_len_0
-Dual-issue:    pc_next = pc + inst_len_0 + inst_len_1
-Branch taken:  pc_next = branch_target
-Stall:         pc_next = pc (no change)
+Accept 0:   pc_next = pc
+Accept 1:   pc_next = pc + inst_len_0
+Accept 2:   pc_next = pc + inst_len_0 + inst_len_1
+Branch:     pc_next = branch_target (with IB flush)
 ```
 
 #### Timing
@@ -127,7 +128,23 @@ Stall:         pc_next = pc (no change)
 
 ---
 
-### Stage 2: Instruction Decode (ID)
+### Stage 2: Instruction Buffer (IB)
+
+**Module**: `cpu_core.sv` (IB queue logic)  
+**Function**: Queue fetched instructions between IF and ID
+
+#### Operations Performed
+
+1. **Enqueue**: Accept up to two fetched instructions per cycle
+2. **Dequeue**: Provide up to two instructions to ID per cycle
+3. **Shift Queue**: Maintain FIFO order with simple shift-register logic
+4. **Flush**: Clear the queue on taken branches
+
+The IB is a 6-entry queue. It decouples fetch from decode/issue without replay:
+- Fetch advances when instructions are **accepted** into IB
+- Decode/issue consume from IB independently
+
+### Stage 3: Instruction Decode (ID)
 
 **Modules**: `decode_unit.sv`, `issue_unit.sv`, `register_file.sv`  
 **Function**: Decode instructions, read registers, determine issue
@@ -290,7 +307,7 @@ dual_issue = issue_inst0 && issue_inst1;
 
 ---
 
-### Stage 3: Execute (EX)
+### Stage 4: Execute (EX)
 
 **Module**: `execute_stage.sv` (integrates `alu.sv`, `multiply_unit.sv`, `branch_unit.sv`)  
 **Function**: Perform arithmetic, logic, multiplication, and branch evaluation
@@ -442,7 +459,7 @@ end
 
 ---
 
-### Stage 4: Memory Access (MEM)
+### Stage 5: Memory Access (MEM)
 
 **Module**: `memory_stage.sv`  
 **Function**: Handle load and store operations to unified memory
@@ -537,7 +554,7 @@ end
 
 ---
 
-### Stage 5: Write-Back (WB)
+### Stage 6: Write-Back (WB)
 
 **Module**: `writeback_stage.sv`  
 **Function**: Write results to register file and update processor flags
@@ -612,10 +629,10 @@ The `halted` signal feeds back to the pipeline control, freezing the entire pipe
 
 Data flows between pipeline stages through registers that hold the pipeline state.
 
-### IF/ID Register
+### IB Queue
 
-**Type**: `if_id_t`  
-**Contents**:
+**Type**: `if_id_t` entries in a 6-entry queue  
+**Contents per entry**:
 ```verilog
 typedef struct packed {
   logic        valid;        // Instruction valid
@@ -626,8 +643,9 @@ typedef struct packed {
 ```
 
 **Control**:
-- **Stall**: Freeze current data when pipeline stalls
-- **Flush**: Insert NOP (valid = 0) on branch mispredict
+- **Enqueue**: Accept up to two instructions per cycle from IF
+- **Dequeue**: Provide up to two instructions per cycle to ID
+- **Flush**: Clear the queue on branch taken
 
 ### ID/EX Register
 
@@ -1093,4 +1111,3 @@ Cycle 6-7: Branch penalty (flush and refill)
 ---
 
 This pipeline documentation is based entirely on the RTL implementation in the sv/rtl/ directory and verified through the testbenches in sv/tb/. All timing diagrams, hazard behaviors, and forwarding paths reflect the actual hardware implementation.
-

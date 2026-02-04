@@ -23,7 +23,6 @@ module fetch_unit
   // PC control
   input  logic        branch_taken,
   input  logic [31:0] branch_target,
-  input  logic        stall,        // Stall fetch (from hazard detection)
   
   // Unified memory interface (128-bit aligned fetch)
   output logic [31:0] mem_addr,     // 32-bit byte address (bottom 4 bits ignored by mem)
@@ -42,12 +41,8 @@ module fetch_unit
   output logic [31:0]  pc_1,
   output logic         valid_1,
   
-  // Feedback from Issue Stage
-  input  logic [1:0]   consumed_count, // 0, 1, or 2 instructions consumed
-  input  logic [3:0]   id_inst_len_0,
-  input  logic [3:0]   id_inst_len_1,
-  input  logic [31:0]  id_pc,
-  input  logic         id_valid
+  // Feedback from IB Stage (acceptance)
+  input  logic [1:0]   accept_count   // 0, 1, or 2 instructions accepted
 );
 
   // ============================================================================
@@ -62,6 +57,7 @@ module fetch_unit
   logic [31:0]  current_pc;   // Current instruction pointer
   logic         pending_hi_fetch;
   logic         pending_lo_fetch;
+  logic         pending_lo_prefetch;
 
   logic [255:0] buffer;
   assign buffer = {buf_hi, buf_lo}; // Big Endian: hi is lower address (earlier bytes)
@@ -87,32 +83,29 @@ module fetch_unit
   req_dest_e   req_dest;      // Destination for the request response
   
   // PC Update Logic (Combinational Next PC)
-  logic [31:0] pc_after_consume;
-  logic [4:0]  consumed_len;
+  logic [31:0] pc_after_accept;
+  logic [4:0]  accept_len;
   logic [31:0] next_block_addr;
   logic        shift_predicted;
-  logic [31:0] feedback_pc_base;
   logic        need_hi_fetch;
   logic        need_lo_fetch;
   logic        prefetch_next;
   
   always_comb begin
-    consumed_len = 5'd0;
-    if (consumed_count >= 1) consumed_len += id_inst_len_0;
-    if (consumed_count == 2) consumed_len += id_inst_len_1;
+    accept_len = 5'd0;
+    if (accept_count >= 1) accept_len += len_0;
+    if (accept_count == 2) accept_len += len_1;
 
-    // Use the committed PC from ID when available to stay aligned with issue feedback.
-    feedback_pc_base = id_valid ? id_pc : current_pc;
-    pc_after_consume = feedback_pc_base + {27'h0, consumed_len};
-    next_block_addr = pc_after_consume & 32'hFFFF_FFF0;
+    // Advance based on instructions actually accepted into the IB stage.
+    pc_after_accept = current_pc + {27'h0, accept_len};
+    next_block_addr = pc_after_accept & 32'hFFFF_FFF0;
     shift_predicted = (next_block_addr == (buf_base_addr + 32'd16));
 
     need_hi_fetch = !buf_hi_valid && !pending_hi_fetch;
     need_lo_fetch = buf_hi_valid && !buf_lo_valid && !pending_lo_fetch;
     // With a 16-byte maximum two-instruction window, we only prefetch one block ahead.
-    // Avoid prefetching while stalled so we don't clobber a still-needed LO block.
     prefetch_next = buf_hi_valid && buf_lo_valid && shift_predicted &&
-                    !pending_lo_fetch && !stall;
+                    !pending_lo_fetch;
   end
 
   // Request scheduling: prefer filling HI, then LO, then speculative next block.
@@ -254,7 +247,7 @@ module fetch_unit
       inst_len_1 = len_1;
       pc_1 = current_pc + {28'h0, len_0};
       
-      if (!branch_taken && !stall && inst0_fits) begin
+      if (!branch_taken && inst0_fits) begin
           valid_0 = 1;
           inst_data_0 = raw_inst_0;
           
@@ -279,6 +272,7 @@ module fetch_unit
     logic [31:0] n_buf_base;
     logic        n_pending_hi;
     logic        n_pending_lo;
+    logic        n_pending_lo_prefetch;
     req_dest_e   resp_dest_n;
 
     if (rst) begin
@@ -289,6 +283,7 @@ module fetch_unit
         buf_lo_valid <= 1'b0;
         pending_hi_fetch <= 1'b0;
         pending_lo_fetch <= 1'b0;
+        pending_lo_prefetch <= 1'b0;
         resp_dest_q <= REQ_NONE;
         
     end else if (branch_taken) begin
@@ -300,6 +295,7 @@ module fetch_unit
         buf_lo_valid <= 1'b0;
         pending_hi_fetch <= 1'b0;
         pending_lo_fetch <= 1'b0;
+        pending_lo_prefetch <= 1'b0;
         resp_dest_q <= REQ_NONE;
         
     end else begin
@@ -311,9 +307,10 @@ module fetch_unit
         n_buf_base = buf_base_addr;
         n_pending_hi = pending_hi_fetch;
         n_pending_lo = pending_lo_fetch;
+        n_pending_lo_prefetch = pending_lo_prefetch;
         resp_dest_n = resp_dest_q;
 
-        // Capture memory responses even when stalled
+        // Capture memory responses regardless of backend stalls
         if (mem_ack) begin
             case (resp_dest_q)
                 REQ_HI: begin
@@ -325,6 +322,7 @@ module fetch_unit
                     n_buf_lo = mem_rdata;
                     n_lo_valid = 1'b1;
                     n_pending_lo = 1'b0;
+                    n_pending_lo_prefetch = 1'b0;
                 end
                 default: ;
             endcase
@@ -334,25 +332,42 @@ module fetch_unit
         if (mem_req) begin
             resp_dest_n = req_dest;
             if (req_dest == REQ_HI) n_pending_hi = 1'b1;
-            if (req_dest == REQ_LO) n_pending_lo = 1'b1;
+            if (req_dest == REQ_LO) begin
+                n_pending_lo = 1'b1;
+                n_pending_lo_prefetch = prefetch_next;
+            end
         end else if (mem_ack) begin
             resp_dest_n = REQ_NONE;
         end
 
-        if (!stall) begin
-            current_pc <= pc_after_consume;
+        if (accept_count != 2'd0) begin
+            current_pc <= pc_after_accept;
 
-            // Buffer shift based on the post-consume PC (max two-instruction window is 16 bytes)
+            // Buffer shift based on the post-accept PC (max two-instruction window is 16 bytes)
             if (next_block_addr != n_buf_base) begin
                 if (next_block_addr == n_buf_base + 32'd16) begin
                     n_buf_base = next_block_addr;
                     n_buf_hi = n_buf_lo;
                     n_hi_valid = n_lo_valid;
                     n_lo_valid = 1'b0;
+                    
+                    // If we had a pending LO fetch, it now corresponds to the new HI block.
+                    if (n_pending_lo && !n_pending_lo_prefetch) begin
+                        n_pending_hi = 1'b1;
+                        n_pending_lo = 1'b0;
+                        n_pending_lo_prefetch = 1'b0;
+                        if (resp_dest_n == REQ_LO) resp_dest_n = REQ_HI;
+                    end
                 end else begin
                     n_buf_base = next_block_addr;
                     n_hi_valid = 1'b0;
                     n_lo_valid = 1'b0;
+                    
+                    // Skipped blocks; drop any pending fetches to avoid stale fills.
+                    n_pending_hi = 1'b0;
+                    n_pending_lo = 1'b0;
+                    n_pending_lo_prefetch = 1'b0;
+                    resp_dest_n = REQ_NONE;
                 end
             end
         end
@@ -365,6 +380,7 @@ module fetch_unit
         buf_base_addr <= n_buf_base;
         pending_hi_fetch <= n_pending_hi;
         pending_lo_fetch <= n_pending_lo;
+        pending_lo_prefetch <= n_pending_lo_prefetch;
         resp_dest_q <= resp_dest_n;
         state <= state_next;
     end

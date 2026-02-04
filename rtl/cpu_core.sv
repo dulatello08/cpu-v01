@@ -2,7 +2,7 @@
 // cpu_core.sv
 // NeoCore 16x32 CPU - CPU Core Implementation
 //
-// Integrates all pipeline stages for a dual-issue, 5-stage pipelined CPU.
+// Integrates all pipeline stages for a dual-issue, 6-stage pipelined CPU.
 // Implements hazard detection, forwarding, and branch handling.
 //
 // Von Neumann Architecture:
@@ -11,7 +11,7 @@
 //   - 128-bit instruction fetch port (16 bytes per cycle)
 //   - 32-bit data access port
 //
-// Pipeline stages: IF -> ID -> EX -> MEM -> WB
+// Pipeline stages: IF -> IB -> ID -> EX -> MEM -> WB
 // Dual-issue: Up to 2 instructions can be issued per cycle.
 //
 
@@ -82,10 +82,33 @@ module cpu_core
   logic [3:0]   fetch_inst_len_1;
   logic [31:0]  fetch_pc_1;
   logic         fetch_valid_1;
+
+  // IB (Instruction Buffer) Stage
+  localparam int IB_DEPTH = 6;
+  localparam int IB_COUNT_W = $clog2(IB_DEPTH + 1);
   
-  // Replay Logic Removed
-  // The fetch unit now receives 'consumed_count' from the issue unit
-  // and corrects the PC internally if fewer instructions were consumed than fetched.
+  logic        ib_valid[IB_DEPTH];
+  logic [31:0] ib_pc[IB_DEPTH];
+  logic [71:0] ib_inst_data[IB_DEPTH];
+  logic [3:0]  ib_inst_len[IB_DEPTH];
+  
+  logic        ib_valid_next[IB_DEPTH];
+  logic [31:0] ib_pc_next[IB_DEPTH];
+  logic [71:0] ib_inst_data_next[IB_DEPTH];
+  logic [3:0]  ib_inst_len_next[IB_DEPTH];
+  logic [IB_COUNT_W-1:0] ib_count;
+  
+  if_id_t ib_out_0, ib_out_1;
+  if_id_t ib_in_0, ib_in_1;
+  
+  logic [1:0] ib_need_slots;
+  logic [2:0] ib_free_slots;
+  logic       ib_can_accept;
+  logic [1:0] accept_count;
+  logic [1:0] ib_deq_req;
+  logic [1:0] ib_deq_count;
+  logic [IB_COUNT_W-1:0] ib_count_after_deq;
+  logic [IB_COUNT_W-1:0] ib_count_next;
   
   // Combined Branch Control
   logic        real_branch_taken;
@@ -99,7 +122,6 @@ module cpu_core
     .rst(rst),
     .branch_taken(real_branch_taken),
     .branch_target(real_branch_target),
-    .stall(stall_pipeline),
     .mem_addr(mem_if_addr),
     .mem_req(mem_if_req),
     .mem_rdata(mem_if_rdata),
@@ -112,49 +134,126 @@ module cpu_core
     .inst_len_1(fetch_inst_len_1),
     .pc_1(fetch_pc_1),
     .valid_1(fetch_valid_1),
-    .consumed_count(consumed_count),
-    .id_inst_len_0(if_id_out_0.inst_len),
-    .id_inst_len_1(if_id_out_1.inst_len),
-    .id_pc(if_id_out_0.pc),
-    .id_valid(if_id_out_0.valid)
+    .accept_count(accept_count)
   );
   
   // ==========================================================================
-  // IF/ID Pipeline Register
+  // IB Stage (Instruction Buffer)
   // ==========================================================================
-  
-  if_id_t if_id_in_0, if_id_out_0;
-  if_id_t if_id_in_1, if_id_out_1;
   
   always_comb begin
-    if_id_in_0.valid = fetch_valid_0;
-    if_id_in_0.pc = fetch_pc_0;
-    if_id_in_0.inst_data = fetch_inst_data_0;
-    if_id_in_0.inst_len = fetch_inst_len_0;
+    ib_in_0.valid = fetch_valid_0;
+    ib_in_0.pc = fetch_pc_0;
+    ib_in_0.inst_data = fetch_inst_data_0;
+    ib_in_0.inst_len = fetch_inst_len_0;
     
-    if_id_in_1.valid = fetch_valid_1;
-    if_id_in_1.pc = fetch_pc_1;
-    if_id_in_1.inst_data = fetch_inst_data_1;
-    if_id_in_1.inst_len = fetch_inst_len_1;
+    ib_in_1.valid = fetch_valid_1;
+    ib_in_1.pc = fetch_pc_1;
+    ib_in_1.inst_data = fetch_inst_data_1;
+    ib_in_1.inst_len = fetch_inst_len_1;
   end
   
-  if_id_reg if_id_reg_0 (
-    .clk(clk),
-    .rst(rst),
-    .stall(stall_pipeline),
-    .flush(flush_id || branch_taken),
-    .data_in(if_id_in_0),
-    .data_out(if_id_out_0)
-  );
+  always_comb begin
+    ib_need_slots = {1'b0, fetch_valid_0} + {1'b0, fetch_valid_1};
+    ib_free_slots = IB_DEPTH[2:0] - ib_count;
+    ib_can_accept = !branch_taken && !halted && (ib_need_slots <= ib_free_slots);
+    accept_count = ib_can_accept ? ib_need_slots : 2'd0;
+    
+    ib_deq_req = (!stall_pipeline && !branch_taken) ? consumed_count : 2'd0;
+    if (ib_count == 0) begin
+      ib_deq_count = 2'd0;
+    end else if ((ib_count == 1) && (ib_deq_req == 2'd2)) begin
+      ib_deq_count = 2'd1;
+    end else begin
+      ib_deq_count = ib_deq_req;
+    end
+    
+    ib_count_after_deq = ib_count - ib_deq_count;
+    ib_count_next = ib_count_after_deq + accept_count;
+  end
   
-  if_id_reg if_id_reg_1 (
-    .clk(clk),
-    .rst(rst),
-    .stall(stall_pipeline),
-    .flush(flush_id || branch_taken),
-    .data_in(if_id_in_1),
-    .data_out(if_id_out_1)
-  );
+  always_comb begin
+    int tail_idx;
+    
+    // Dequeue: shift toward head by ib_deq_count
+    for (int i = 0; i < IB_DEPTH; i++) begin
+      if (i + ib_deq_count < IB_DEPTH) begin
+        ib_valid_next[i] = ib_valid[i + ib_deq_count];
+        ib_pc_next[i] = ib_pc[i + ib_deq_count];
+        ib_inst_data_next[i] = ib_inst_data[i + ib_deq_count];
+        ib_inst_len_next[i] = ib_inst_len[i + ib_deq_count];
+      end else begin
+        ib_valid_next[i] = 1'b0;
+        ib_pc_next[i] = 32'h0;
+        ib_inst_data_next[i] = 72'h0;
+        ib_inst_len_next[i] = 4'h0;
+      end
+    end
+    
+    // Enqueue: append new entries at tail
+    tail_idx = ib_count_after_deq;
+    if (accept_count >= 2'd1) begin
+      if (tail_idx < IB_DEPTH) begin
+        ib_valid_next[tail_idx] = ib_in_0.valid;
+        ib_pc_next[tail_idx] = ib_in_0.pc;
+        ib_inst_data_next[tail_idx] = ib_in_0.inst_data;
+        ib_inst_len_next[tail_idx] = ib_in_0.inst_len;
+      end
+    end
+    if (accept_count == 2'd2) begin
+      if (tail_idx + 1 < IB_DEPTH) begin
+        ib_valid_next[tail_idx + 1] = ib_in_1.valid;
+        ib_pc_next[tail_idx + 1] = ib_in_1.pc;
+        ib_inst_data_next[tail_idx + 1] = ib_in_1.inst_data;
+        ib_inst_len_next[tail_idx + 1] = ib_in_1.inst_len;
+      end
+    end
+    
+    // Clear entries above new count
+    for (int i = 0; i < IB_DEPTH; i++) begin
+      if (i >= ib_count_next) begin
+        ib_valid_next[i] = 1'b0;
+      end
+    end
+  end
+  
+  always_ff @(posedge clk) begin
+    if (rst || branch_taken) begin
+      ib_count <= '0;
+      for (int i = 0; i < IB_DEPTH; i++) begin
+        ib_valid[i] <= 1'b0;
+        ib_pc[i] <= 32'h0;
+        ib_inst_data[i] <= 72'h0;
+        ib_inst_len[i] <= 4'h0;
+      end
+    end else begin
+      for (int i = 0; i < IB_DEPTH; i++) begin
+        ib_valid[i] <= ib_valid_next[i];
+        ib_pc[i] <= ib_pc_next[i];
+        ib_inst_data[i] <= ib_inst_data_next[i];
+        ib_inst_len[i] <= ib_inst_len_next[i];
+      end
+      ib_count <= ib_count_next;
+    end
+  end
+  
+  always_comb begin
+    ib_out_0.valid = ib_valid[0];
+    ib_out_0.pc = ib_pc[0];
+    ib_out_0.inst_data = ib_inst_data[0];
+    ib_out_0.inst_len = ib_inst_len[0];
+    
+    ib_out_1.valid = ib_valid[1];
+    ib_out_1.pc = ib_pc[1];
+    ib_out_1.inst_data = ib_inst_data[1];
+    ib_out_1.inst_len = ib_inst_len[1];
+    if (ib_count == 0) begin
+      ib_out_0.valid = 1'b0;
+    end
+    if (ib_count <= 1) begin
+      ib_out_1.valid = 1'b0;
+    end
+  end
   
   // ==========================================================================
   // Decode Stage
@@ -177,10 +276,10 @@ module cpu_core
   decode_unit decode_0 (
     .clk(clk),
     .rst(rst),
-    .inst_data(if_id_out_0.inst_data),
-    .inst_len(if_id_out_0.inst_len),
-    .pc(if_id_out_0.pc),
-    .valid_in(if_id_out_0.valid),
+    .inst_data(ib_out_0.inst_data),
+    .inst_len(ib_out_0.inst_len),
+    .pc(ib_out_0.pc),
+    .valid_in(ib_out_0.valid),
     .valid_out(decode_valid_0),
     .opcode(decode_opcode_0),
     .specifier(decode_specifier_0),
@@ -221,10 +320,10 @@ module cpu_core
   decode_unit decode_1 (
     .clk(clk),
     .rst(rst),
-    .inst_data(if_id_out_1.inst_data),
-    .inst_len(if_id_out_1.inst_len),
-    .pc(if_id_out_1.pc),
-    .valid_in(if_id_out_1.valid),
+    .inst_data(ib_out_1.inst_data),
+    .inst_len(ib_out_1.inst_len),
+    .pc(ib_out_1.pc),
+    .valid_in(ib_out_1.valid),
     .valid_out(decode_valid_1),
     .opcode(decode_opcode_1),
     .specifier(decode_specifier_1),
@@ -284,7 +383,7 @@ module cpu_core
     .dual_issue(dual_issue),
     .consumed_count(consumed_count)
   );
-  
+
   assign dual_issue_active = dual_issue;
   
   // ==========================================================================
@@ -324,57 +423,108 @@ module cpu_core
   id_ex_t id_ex_in_1, id_ex_out_1;
   
   always_comb begin
+    // Defaults: bubble (prevents unissued instructions from triggering side effects)
+    id_ex_in_0.valid = 1'b0;
+    id_ex_in_0.pc = 32'h0;
+    id_ex_in_0.opcode = OP_NOP;
+    id_ex_in_0.specifier = 8'h00;
+    id_ex_in_0.itype = ITYPE_CTRL;
+    id_ex_in_0.alu_op = ALU_NOP;
+    id_ex_in_0.rs1_addr = 4'h0;
+    id_ex_in_0.rs2_addr = 4'h0;
+    id_ex_in_0.rs1_data = 16'h0;
+    id_ex_in_0.rs2_data = 16'h0;
+    id_ex_in_0.immediate = 32'h0;
+    id_ex_in_0.rd_addr = 4'h0;
+    id_ex_in_0.rd2_addr = 4'h0;
+    id_ex_in_0.rd_we = 1'b0;
+    id_ex_in_0.rd2_we = 1'b0;
+    id_ex_in_0.mem_read = 1'b0;
+    id_ex_in_0.mem_write = 1'b0;
+    id_ex_in_0.mem_size = MEM_HALF;
+    id_ex_in_0.mem_addr = 32'h0;
+    id_ex_in_0.is_branch = 1'b0;
+    id_ex_in_0.is_jsr = 1'b0;
+    id_ex_in_0.is_rts = 1'b0;
+    id_ex_in_0.is_halt = 1'b0;
+    
+    id_ex_in_1.valid = 1'b0;
+    id_ex_in_1.pc = 32'h0;
+    id_ex_in_1.opcode = OP_NOP;
+    id_ex_in_1.specifier = 8'h00;
+    id_ex_in_1.itype = ITYPE_CTRL;
+    id_ex_in_1.alu_op = ALU_NOP;
+    id_ex_in_1.rs1_addr = 4'h0;
+    id_ex_in_1.rs2_addr = 4'h0;
+    id_ex_in_1.rs1_data = 16'h0;
+    id_ex_in_1.rs2_data = 16'h0;
+    id_ex_in_1.immediate = 32'h0;
+    id_ex_in_1.rd_addr = 4'h0;
+    id_ex_in_1.rd2_addr = 4'h0;
+    id_ex_in_1.rd_we = 1'b0;
+    id_ex_in_1.rd2_we = 1'b0;
+    id_ex_in_1.mem_read = 1'b0;
+    id_ex_in_1.mem_write = 1'b0;
+    id_ex_in_1.mem_size = MEM_HALF;
+    id_ex_in_1.mem_addr = 32'h0;
+    id_ex_in_1.is_branch = 1'b0;
+    id_ex_in_1.is_jsr = 1'b0;
+    id_ex_in_1.is_rts = 1'b0;
+    id_ex_in_1.is_halt = 1'b0;
+
     // Instruction 0
-    id_ex_in_0.valid = issue_inst0;
-    id_ex_in_0.pc = if_id_out_0.pc;
-    id_ex_in_0.opcode = decode_opcode_0;
-    id_ex_in_0.specifier = decode_specifier_0;
-    id_ex_in_0.itype = decode_itype_0;
-    id_ex_in_0.alu_op = decode_alu_op_0;
-    id_ex_in_0.rs1_addr = decode_rs1_addr_0;
-    id_ex_in_0.rs2_addr = decode_rs2_addr_0;
-    id_ex_in_0.rs1_data = rf_rs1_data_0;
-    id_ex_in_0.rs2_data = rf_rs2_data_0;
-    id_ex_in_0.immediate = decode_immediate_0;
-    id_ex_in_0.rd_addr = decode_rd_addr_0;
-    id_ex_in_0.rd2_addr = decode_rd2_addr_0;
-    id_ex_in_0.rd_we = decode_rd_we_0;
-    id_ex_in_0.rd2_we = decode_rd2_we_0;
-    id_ex_in_0.mem_read = decode_mem_read_0;
-    id_ex_in_0.mem_write = decode_mem_write_0;
-    id_ex_in_0.mem_write = decode_mem_write_0;
-    id_ex_in_0.mem_size = decode_mem_size_0;
-    id_ex_in_0.mem_addr = decode_mem_addr_0;
-    id_ex_in_0.is_branch = decode_is_branch_0;
-    id_ex_in_0.is_jsr = decode_is_jsr_0;
-    id_ex_in_0.is_rts = decode_is_rts_0;
-    id_ex_in_0.is_halt = decode_is_halt_0;
+    if (issue_inst0) begin
+      id_ex_in_0.valid = 1'b1;
+      id_ex_in_0.pc = ib_out_0.pc;
+      id_ex_in_0.opcode = decode_opcode_0;
+      id_ex_in_0.specifier = decode_specifier_0;
+      id_ex_in_0.itype = decode_itype_0;
+      id_ex_in_0.alu_op = decode_alu_op_0;
+      id_ex_in_0.rs1_addr = decode_rs1_addr_0;
+      id_ex_in_0.rs2_addr = decode_rs2_addr_0;
+      id_ex_in_0.rs1_data = rf_rs1_data_0;
+      id_ex_in_0.rs2_data = rf_rs2_data_0;
+      id_ex_in_0.immediate = decode_immediate_0;
+      id_ex_in_0.rd_addr = decode_rd_addr_0;
+      id_ex_in_0.rd2_addr = decode_rd2_addr_0;
+      id_ex_in_0.rd_we = decode_rd_we_0;
+      id_ex_in_0.rd2_we = decode_rd2_we_0;
+      id_ex_in_0.mem_read = decode_mem_read_0;
+      id_ex_in_0.mem_write = decode_mem_write_0;
+      id_ex_in_0.mem_size = decode_mem_size_0;
+      id_ex_in_0.mem_addr = decode_mem_addr_0;
+      id_ex_in_0.is_branch = decode_is_branch_0;
+      id_ex_in_0.is_jsr = decode_is_jsr_0;
+      id_ex_in_0.is_rts = decode_is_rts_0;
+      id_ex_in_0.is_halt = decode_is_halt_0;
+    end
     
     // Instruction 1
-    id_ex_in_1.valid = issue_inst1;
-    id_ex_in_1.pc = if_id_out_1.pc;
-    id_ex_in_1.opcode = decode_opcode_1;
-    id_ex_in_1.specifier = decode_specifier_1;
-    id_ex_in_1.itype = decode_itype_1;
-    id_ex_in_1.alu_op = decode_alu_op_1;
-    id_ex_in_1.rs1_addr = decode_rs1_addr_1;
-    id_ex_in_1.rs2_addr = decode_rs2_addr_1;
-    id_ex_in_1.rs1_data = rf_rs1_data_1;
-    id_ex_in_1.rs2_data = rf_rs2_data_1;
-    id_ex_in_1.immediate = decode_immediate_1;
-    id_ex_in_1.rd_addr = decode_rd_addr_1;
-    id_ex_in_1.rd2_addr = decode_rd2_addr_1;
-    id_ex_in_1.rd_we = decode_rd_we_1;
-    id_ex_in_1.rd2_we = decode_rd2_we_1;
-    id_ex_in_1.mem_read = decode_mem_read_1;
-    id_ex_in_1.mem_write = decode_mem_write_1;
-    id_ex_in_1.mem_write = decode_mem_write_1;
-    id_ex_in_1.mem_size = decode_mem_size_1;
-    id_ex_in_1.mem_addr = decode_mem_addr_1;
-    id_ex_in_1.is_branch = decode_is_branch_1;
-    id_ex_in_1.is_jsr = decode_is_jsr_1;
-    id_ex_in_1.is_rts = decode_is_rts_1;
-    id_ex_in_1.is_halt = decode_is_halt_1;
+    if (issue_inst1) begin
+      id_ex_in_1.valid = 1'b1;
+      id_ex_in_1.pc = ib_out_1.pc;
+      id_ex_in_1.opcode = decode_opcode_1;
+      id_ex_in_1.specifier = decode_specifier_1;
+      id_ex_in_1.itype = decode_itype_1;
+      id_ex_in_1.alu_op = decode_alu_op_1;
+      id_ex_in_1.rs1_addr = decode_rs1_addr_1;
+      id_ex_in_1.rs2_addr = decode_rs2_addr_1;
+      id_ex_in_1.rs1_data = rf_rs1_data_1;
+      id_ex_in_1.rs2_data = rf_rs2_data_1;
+      id_ex_in_1.immediate = decode_immediate_1;
+      id_ex_in_1.rd_addr = decode_rd_addr_1;
+      id_ex_in_1.rd2_addr = decode_rd2_addr_1;
+      id_ex_in_1.rd_we = decode_rd_we_1;
+      id_ex_in_1.rd2_we = decode_rd2_we_1;
+      id_ex_in_1.mem_read = decode_mem_read_1;
+      id_ex_in_1.mem_write = decode_mem_write_1;
+      id_ex_in_1.mem_size = decode_mem_size_1;
+      id_ex_in_1.mem_addr = decode_mem_addr_1;
+      id_ex_in_1.is_branch = decode_is_branch_1;
+      id_ex_in_1.is_jsr = decode_is_jsr_1;
+      id_ex_in_1.is_rts = decode_is_rts_1;
+      id_ex_in_1.is_halt = decode_is_halt_1;
+    end
   end
   
   id_ex_reg id_ex_reg_0 (
@@ -412,14 +562,26 @@ module cpu_core
     .id_rs1_addr_1(id_ex_out_1.rs1_addr),
     .id_rs2_addr_1(id_ex_out_1.rs2_addr),
     .id_valid_1(id_ex_out_1.valid),
-    .ex_rd_addr_0(ex_mem_out_0.rd_addr),
-    .ex_rd_we_0(ex_mem_out_0.rd_we),
-    .ex_mem_read_0(ex_mem_out_0.mem_read),
-    .ex_rd_addr_1(ex_mem_out_1.rd_addr),
-    .ex_rd_we_1(ex_mem_out_1.rd_we),
-    .ex_mem_read_1(ex_mem_out_1.mem_read),
-    .ex_valid_0(ex_mem_out_0.valid),
-    .ex_valid_1(ex_mem_out_1.valid),
+    .fwd_ex_rd_addr_0(ex_mem_out_0.rd_addr),
+    .fwd_ex_rd_we_0(ex_mem_out_0.rd_we),
+    .fwd_ex_valid_0(ex_mem_out_0.valid),
+    .fwd_ex_rd_addr_1(ex_mem_out_1.rd_addr),
+    .fwd_ex_rd_we_1(ex_mem_out_1.rd_we),
+    .fwd_ex_valid_1(ex_mem_out_1.valid),
+    .id_stage_rs1_addr_0(decode_rs1_addr_0),
+    .id_stage_rs2_addr_0(decode_rs2_addr_0),
+    .id_stage_valid_0(decode_valid_0),
+    .id_stage_rs1_addr_1(decode_rs1_addr_1),
+    .id_stage_rs2_addr_1(decode_rs2_addr_1),
+    .id_stage_valid_1(decode_valid_1),
+    .ex_rd_addr_0(id_ex_out_0.rd_addr),
+    .ex_rd_we_0(id_ex_out_0.rd_we),
+    .ex_mem_read_0(id_ex_out_0.mem_read),
+    .ex_rd_addr_1(id_ex_out_1.rd_addr),
+    .ex_rd_we_1(id_ex_out_1.rd_we),
+    .ex_mem_read_1(id_ex_out_1.mem_read),
+    .ex_valid_0(id_ex_out_0.valid),
+    .ex_valid_1(id_ex_out_1.valid),
     .mem_rd_addr_0(mem_wb_out_0.rd_addr),
     .mem_rd_we_0(mem_wb_out_0.rd_we),
     .mem_rd_addr_1(mem_wb_out_1.rd_addr),

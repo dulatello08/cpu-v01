@@ -36,7 +36,7 @@ The Issue Unit determines whether one or two instructions can be issued simultan
 | **Outputs** | | | |
 | `issue_inst0` | output | 1 | Issue instruction 0 |
 | `issue_inst1` | output | 1 | Issue instruction 1 |
-| `dual_issue` | output | 1 | **Both instructions issued (sent to fetch_unit)** |
+| `dual_issue` | output | 1 | Both instructions issued this cycle (debug/metrics) |
 
 ### Parameters
 None.
@@ -96,10 +96,6 @@ assign issue_inst0 = inst0_valid;
 assign issue_inst1 = dual_issue;  // Only issue inst1 if dual-issuing
 ```
 
-### Critical Integration
-
-**The `dual_issue` output MUST be connected to `fetch_unit`** so fetch knows how many instruction bytes to consume from the buffer.
-
 ### Usage Example
 
 ```systemverilog
@@ -118,7 +114,7 @@ issue_unit issue (
   // ... inst1 inputs
   .issue_inst0(issue_inst0),
   .issue_inst1(issue_inst1),
-  .dual_issue(dual_issue)  // CONNECT TO FETCH_UNIT!
+  .dual_issue(dual_issue)
 );
 ```
 
@@ -137,6 +133,5 @@ Dual-issue capability can achieve up to **2 IPC (instructions per cycle)** for i
 
 ### Related Modules
 - `decode_unit.sv`: Provides instruction type and operand information
-- `fetch_unit.sv`: **Receives dual_issue to determine byte consumption**
 - `hazard_unit.sv`: Detects pipeline hazards for single-issue stalls
-- `core_top.sv`: Integrates issue_unit and connects dual_issue signal
+- `cpu_core.sv`: Integrates issue_unit and consumes `issue_inst*`/`dual_issue`

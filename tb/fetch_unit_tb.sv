@@ -11,7 +11,6 @@ module fetch_unit_tb;
   logic        rst;
   logic        branch_taken;
   logic [31:0] branch_target;
-  logic        stall;
   
   logic [31:0] mem_addr;
   logic        mem_req;
@@ -28,12 +27,8 @@ module fetch_unit_tb;
   logic [31:0]  pc_1;
   logic         valid_1;
   
-  // Feedback from Issue Stage (new ports)
-  logic [1:0]   consumed_count;
-  logic [3:0]   id_inst_len_0;
-  logic [3:0]   id_inst_len_1;
-  logic [31:0]  id_pc;
-  logic         id_valid;
+  // Feedback from IB stage (acceptance)
+  logic [1:0]   accept_count;
 
   // DUT Instantiation
   fetch_unit dut (
@@ -41,7 +36,6 @@ module fetch_unit_tb;
     .rst(rst),
     .branch_taken(branch_taken),
     .branch_target(branch_target),
-    .stall(stall),
     .mem_addr(mem_addr),
     .mem_req(mem_req),
     .mem_rdata(mem_rdata),
@@ -54,11 +48,7 @@ module fetch_unit_tb;
     .inst_len_1(inst_len_1),
     .pc_1(pc_1),
     .valid_1(valid_1),
-    .consumed_count(consumed_count),
-    .id_inst_len_0(id_inst_len_0),
-    .id_inst_len_1(id_inst_len_1),
-    .id_pc(id_pc),
-    .id_valid(id_valid)
+    .accept_count(accept_count)
   );
 
   // Clock Generation
@@ -100,6 +90,11 @@ module fetch_unit_tb;
     end
   end
 
+  // Accept everything the fetch unit presents (no IB capacity modeling here)
+  always_comb begin
+    accept_count = {1'b0, valid_0} + {1'b0, valid_1};
+  end
+
   always @(posedge clk) begin
     mem_ack <= 0;
     if (mem_req) begin
@@ -121,12 +116,7 @@ module fetch_unit_tb;
     rst = 1;
     branch_taken = 0;
     branch_target = 0;
-    stall = 0;
-    consumed_count = 2'd0;
-    id_inst_len_0 = 4'd0;
-    id_inst_len_1 = 4'd0;
-    id_pc = 32'd0;
-    id_valid = 1'b0;
+    accept_count = 2'd0;
     
     // Reset
     #20;

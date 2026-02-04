@@ -2,7 +2,7 @@
 // pipeline_regs.sv
 // NeoCore 16x32 CPU - Pipeline Stage Registers
 //
-// Contains all pipeline registers for the 5-stage pipeline.
+// Contains all pipeline registers for the 6-stage pipeline (IB is in cpu_core).
 // Each register has enable/stall capability and flush capability.
 //
 

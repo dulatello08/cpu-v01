@@ -1,7 +1,7 @@
 # Fetch Unit Module Reference
 
 ## Overview
-The Fetch Unit retrieves variable-length instructions from unified memory and maintains an instruction buffer for dual-issue capability. It handles PC updates for sequential execution, branches, and pipeline stalls.
+The Fetch Unit retrieves variable-length instructions from unified memory and presents up to two decoded instruction windows per cycle. It does **not** buffer instructions itself; the Instruction Buffer (IB) lives in `cpu_core`. Fetch advances only when the IB accepts instructions.
 
 ## Module: `fetch_unit`
 
@@ -13,8 +13,7 @@ The Fetch Unit retrieves variable-length instructions from unified memory and ma
 | `rst` | input | 1 | Reset signal |
 | `branch_taken` | input | 1 | Branch taken signal from execute stage |
 | `branch_target` | input | 32 | Branch target address |
-| `stall` | input | 1 | Stall signal from hazard/memory/halt logic |
-| `dual_issue` | input | 1 | **Dual-issue decision from issue_unit** |
+| `accept_count` | input | 2 | Number of instructions accepted into IB (0/1/2) |
 | `mem_addr` | output | 32 | Memory address for instruction fetch |
 | `mem_req` | output | 1 | Memory request signal |
 | `mem_rdata` | input | 128 | 16 bytes of instruction data (big-endian) |
@@ -48,54 +47,32 @@ Instruction lengths range from 2 to 9 bytes.
 
 ### Buffer Management
 
-The fetch unit maintains a **256-bit (32-byte) instruction buffer**:
+The fetch unit maintains a **two-block window**:
 
-1. **Refill**: When buffer has < 16 valid bytes, request 16-byte memory fetch
-2. **Extraction**: Extract up to 2 instructions from buffer top (MSB)
-3. **Consumption**: After issue_unit confirms dual-issue decision, shift consumed bytes out using **LEFT shift** (keeps remaining bytes at MSB)
-4. **Alignment**: Buffer PC (`buffer_pc`) tracks address of byte 0 in buffer
+1. **HI buffer** (`buf_hi`): 16 bytes at `buf_base_addr`
+2. **LO buffer** (`buf_lo`): next 16 bytes (`buf_base_addr + 16`)
+3. **Extraction**: Extract up to 2 instructions from the 32-byte window
+4. **Prefetch**: When a shift is predicted, prefetch the next block
 
-### Critical Fix: Dual-Issue Awareness
+### Critical Behavior: Advance on Accept
 
-**FIXED BUG**: The fetch unit now receives the `dual_issue` signal from `issue_unit` to determine how many instruction bytes to consume.
-
-**Previous behavior** (WRONG):
-- Consumed both instruction lengths even when hazards prevented dual-issue
-- PC advanced incorrectly, skipping instructions
-
-**Current behavior** (CORRECT):
-```systemverilog
-consumed_bytes = inst_len_0;
-if (can_consume_1 && dual_issue) begin  // Check actual dual-issue decision
-  consumed_bytes = consumed_bytes + inst_len_1;
-end
-```
+Fetch advances only when the IB accepts instructions (not when they are consumed by the backend). This decouples frontend progress from backend stalls.
 
 ### PC Update Logic
 
 ```systemverilog
 if (branch_taken) begin
   pc_next = branch_target;  // Branch redirect
-end else if (!stall) begin
-  pc_next = pc + consumed_bytes;  // Advance by exact instruction lengths
+end else if (accept_count != 0) begin
+  pc_next = pc + accept_len;  // Advance by accepted instruction lengths
 end else begin
-  pc_next = pc;  // Stalled
+  pc_next = pc;  // No accept
 end
 ```
 
 ### Buffer Shift Direction
 
-**CRITICAL**: Uses **LEFT shift** (`<<`) to consume bytes from big-endian buffer:
-- LEFT shift removes consumed bytes from MSB
-- Remaining bytes stay at MSB where extraction happens
-- RIGHT shift would move remaining bytes to LSB (WRONG!)
-
-Example:
-```
-Before: buffer[255:248] = 0x00 (byte 0), buffer[247:240] = 0x09 (byte 1)
-After consuming 5 bytes with LEFT shift:
-  buffer[255:248] = 0x02 (byte 5, now at top)
-```
+The fetch unit does **not** shift an instruction FIFO. It maintains two 16‑byte buffers and moves `buf_lo` into `buf_hi` when `current_pc` crosses a 16‑byte boundary.
 
 ### Behavior
 
@@ -105,8 +82,8 @@ After consuming 5 bytes with LEFT shift:
    - Extract up to 2 instructions from buffer
    - Compute instruction lengths from specifier
    - Output valid instructions to decode stage
-3. **Branch**: Flush buffer, redirect PC
-4. **Stall**: Hold PC, don't consume buffer
+3. **Branch**: Flush buffers, redirect PC
+4. **No Accept**: Hold PC, keep buffers
 
 ### Usage Example
 
@@ -116,8 +93,7 @@ fetch_unit fetch (
   .rst(rst),
   .branch_taken(branch_taken),
   .branch_target(branch_target),
-  .stall(stall_pipeline),
-  .dual_issue(dual_issue),  // FROM issue_unit
+  .accept_count(accept_count),  // FROM IB
   .mem_addr(mem_if_addr),
   .mem_req(mem_if_req),
   .mem_rdata(mem_if_rdata),
@@ -135,16 +111,15 @@ fetch_unit fetch (
 
 ### Implementation Notes
 
-1. **Buffer Overflow Protection**: Refill clamped to max 32 bytes total
-2. **Variable Shift**: Uses `consumed_bytes * 8` bit shift (SystemVerilog supports this)
-3. **Instruction Length Decoding**: Computed from specifier byte per ISA spec
+1. **Buffer Integrity**: Pending LO prefetch is tracked to avoid mis-routing on block shifts
+2. **Instruction Length Decoding**: Computed from specifier byte per ISA spec
 
 ### Known Limitations
 
 None. All bugs related to byte consumption and PC advancement have been fixed.
 
 ### Related Modules
-- `core_top.sv`: Instantiates fetch_unit and connects dual_issue signal
-- `issue_unit.sv`: Generates dual_issue decision signal
+- `cpu_core.sv`: Instantiates fetch_unit and drives `accept_count` from the IB
+- `issue_unit.sv`: Provides issue decisions consumed by the IB/decode pipeline
 - `unified_memory.sv`: Provides instruction data
 - `decode_unit.sv`: Receives fetched instructions
