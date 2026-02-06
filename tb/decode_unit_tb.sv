@@ -30,6 +30,7 @@ module decode_unit_tb;
   logic [31:0] immediate;
   logic [31:0] mem_addr;
   logic [31:0] branch_target;
+  logic        mov_byte_hi;
   logic        rd_we;
   logic        rd2_we;
   logic        mem_read;
@@ -60,6 +61,7 @@ module decode_unit_tb;
     .immediate(immediate),
     .mem_addr(mem_addr),
     .branch_target(branch_target),
+    .mov_byte_hi(mov_byte_hi),
     .rd_we(rd_we),
     .rd2_we(rd2_we),
     .mem_read(mem_read),

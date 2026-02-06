@@ -64,6 +64,7 @@ module cpu_core
   // ==========================================================================
   
   logic stall_pipeline;
+  logic stall_frontend;
   logic [1:0] consumed_count; // Forward declaration
   logic flush_if, flush_id, flush_ex;
   logic branch_taken;
@@ -159,7 +160,7 @@ module cpu_core
     ib_can_accept = !branch_taken && !halted && (ib_need_slots <= ib_free_slots);
     accept_count = ib_can_accept ? ib_need_slots : 2'd0;
     
-    ib_deq_req = (!stall_pipeline && !branch_taken) ? consumed_count : 2'd0;
+    ib_deq_req = (!stall_frontend && !branch_taken) ? consumed_count : 2'd0;
     if (ib_count == 0) begin
       ib_deq_count = 2'd0;
     end else if ((ib_count == 1) && (ib_deq_req == 2'd2)) begin
@@ -268,6 +269,7 @@ module cpu_core
   logic [3:0]  decode_rs1_addr_0, decode_rs2_addr_0;
   logic [3:0]  decode_rd_addr_0, decode_rd2_addr_0;
   logic [31:0] decode_immediate_0, decode_mem_addr_0, decode_branch_target_0;
+  logic        decode_mov_byte_hi_0;
   logic        decode_rd_we_0, decode_rd2_we_0;
   logic        decode_mem_read_0, decode_mem_write_0;
   mem_size_e   decode_mem_size_0;
@@ -292,6 +294,7 @@ module cpu_core
     .immediate(decode_immediate_0),
     .mem_addr(decode_mem_addr_0),
     .branch_target(decode_branch_target_0),
+    .mov_byte_hi(decode_mov_byte_hi_0),
     .rd_we(decode_rd_we_0),
     .rd2_we(decode_rd2_we_0),
     .mem_read(decode_mem_read_0),
@@ -312,6 +315,7 @@ module cpu_core
   logic [3:0]  decode_rs1_addr_1, decode_rs2_addr_1;
   logic [3:0]  decode_rd_addr_1, decode_rd2_addr_1;
   logic [31:0] decode_immediate_1, decode_mem_addr_1, decode_branch_target_1;
+  logic        decode_mov_byte_hi_1;
   logic        decode_rd_we_1, decode_rd2_we_1;
   logic        decode_mem_read_1, decode_mem_write_1;
   mem_size_e   decode_mem_size_1;
@@ -336,6 +340,7 @@ module cpu_core
     .immediate(decode_immediate_1),
     .mem_addr(decode_mem_addr_1),
     .branch_target(decode_branch_target_1),
+    .mov_byte_hi(decode_mov_byte_hi_1),
     .rd_we(decode_rd_we_1),
     .rd2_we(decode_rd2_we_1),
     .mem_read(decode_mem_read_1),
@@ -435,6 +440,7 @@ module cpu_core
     id_ex_in_0.rs1_data = 16'h0;
     id_ex_in_0.rs2_data = 16'h0;
     id_ex_in_0.immediate = 32'h0;
+    id_ex_in_0.mov_byte_hi = 1'b0;
     id_ex_in_0.rd_addr = 4'h0;
     id_ex_in_0.rd2_addr = 4'h0;
     id_ex_in_0.rd_we = 1'b0;
@@ -459,6 +465,7 @@ module cpu_core
     id_ex_in_1.rs1_data = 16'h0;
     id_ex_in_1.rs2_data = 16'h0;
     id_ex_in_1.immediate = 32'h0;
+    id_ex_in_1.mov_byte_hi = 1'b0;
     id_ex_in_1.rd_addr = 4'h0;
     id_ex_in_1.rd2_addr = 4'h0;
     id_ex_in_1.rd_we = 1'b0;
@@ -485,6 +492,7 @@ module cpu_core
       id_ex_in_0.rs1_data = rf_rs1_data_0;
       id_ex_in_0.rs2_data = rf_rs2_data_0;
       id_ex_in_0.immediate = decode_immediate_0;
+      id_ex_in_0.mov_byte_hi = decode_mov_byte_hi_0;
       id_ex_in_0.rd_addr = decode_rd_addr_0;
       id_ex_in_0.rd2_addr = decode_rd2_addr_0;
       id_ex_in_0.rd_we = decode_rd_we_0;
@@ -512,6 +520,7 @@ module cpu_core
       id_ex_in_1.rs1_data = rf_rs1_data_1;
       id_ex_in_1.rs2_data = rf_rs2_data_1;
       id_ex_in_1.immediate = decode_immediate_1;
+      id_ex_in_1.mov_byte_hi = decode_mov_byte_hi_1;
       id_ex_in_1.rd_addr = decode_rd_addr_1;
       id_ex_in_1.rd2_addr = decode_rd2_addr_1;
       id_ex_in_1.rd_we = decode_rd_we_1;
@@ -742,7 +751,8 @@ module cpu_core
                             (ex_mem_out_1.valid && ex_mem_out_1.is_halt);
   
   // Stall entire pipeline only for hazards, memory stalls, or once fully halted
-  assign stall_pipeline = hazard_stall || mem_stall || halted;
+  assign stall_frontend = hazard_stall || mem_stall || halted;
+  assign stall_pipeline = mem_stall || halted;
   
   // ==========================================================================
   // Current PC Reporting

@@ -100,7 +100,9 @@ module memory_stage
           dmem_addr = ex_mem_0.mem_addr;
           dmem_size = ex_mem_0.mem_size;
           dmem_we = ex_mem_0.mem_write;
-          dmem_wdata = (ex_mem_0.mem_size == MEM_BYTE) ? {24'h0, ex_mem_0.mem_wdata[7:0]} :
+          dmem_wdata = (ex_mem_0.mem_size == MEM_BYTE) ?
+                       {24'h0,
+                        (ex_mem_0.mov_byte_hi ? ex_mem_0.mem_wdata[15:8] : ex_mem_0.mem_wdata[7:0])} :
                        (ex_mem_0.mem_size == MEM_HALF) ? {16'h0, ex_mem_0.mem_wdata[15:0]} :
                                                          ex_mem_0.mem_wdata; // Word uses 32-bit through
 
@@ -112,7 +114,9 @@ module memory_stage
           dmem_addr = ex_mem_1.mem_addr;
           dmem_size = ex_mem_1.mem_size;
           dmem_we = ex_mem_1.mem_write;
-          dmem_wdata = (ex_mem_1.mem_size == MEM_BYTE) ? {24'h0, ex_mem_1.mem_wdata[7:0]} :
+          dmem_wdata = (ex_mem_1.mem_size == MEM_BYTE) ?
+                       {24'h0,
+                        (ex_mem_1.mov_byte_hi ? ex_mem_1.mem_wdata[15:8] : ex_mem_1.mem_wdata[7:0])} :
                        (ex_mem_1.mem_size == MEM_HALF) ? {16'h0, ex_mem_1.mem_wdata[15:0]} :
                                                          ex_mem_1.mem_wdata;
 
@@ -127,7 +131,9 @@ module memory_stage
         dmem_addr = ex_mem_0.mem_addr;
         dmem_size = ex_mem_0.mem_size;
         dmem_we = ex_mem_0.mem_write;
-        dmem_wdata = (ex_mem_0.mem_size == MEM_BYTE) ? {24'h0, ex_mem_0.mem_wdata[7:0]} :
+        dmem_wdata = (ex_mem_0.mem_size == MEM_BYTE) ?
+                     {24'h0,
+                      (ex_mem_0.mov_byte_hi ? ex_mem_0.mem_wdata[15:8] : ex_mem_0.mem_wdata[7:0])} :
                      (ex_mem_0.mem_size == MEM_HALF) ? {16'h0, ex_mem_0.mem_wdata[15:0]} :
                                                        ex_mem_0.mem_wdata;
         mem_stall = 1'b1;
@@ -163,7 +169,9 @@ module memory_stage
         dmem_addr = ex_mem_1.mem_addr;
         dmem_size = ex_mem_1.mem_size;
         dmem_we = ex_mem_1.mem_write;
-        dmem_wdata = (ex_mem_1.mem_size == MEM_BYTE) ? {24'h0, ex_mem_1.mem_wdata[7:0]} :
+        dmem_wdata = (ex_mem_1.mem_size == MEM_BYTE) ?
+                     {24'h0,
+                      (ex_mem_1.mov_byte_hi ? ex_mem_1.mem_wdata[15:8] : ex_mem_1.mem_wdata[7:0])} :
                      (ex_mem_1.mem_size == MEM_HALF) ? {16'h0, ex_mem_1.mem_wdata[15:0]} :
                                                        ex_mem_1.mem_wdata;
         mem_stall = 1'b1;
@@ -205,7 +213,16 @@ module memory_stage
     // Select write-back data
     if (ex_mem_0.mem_read) begin
       // Load instruction: use memory data
-      mem_wb_0.wb_data = mem_result_0[15:0];
+      if (ex_mem_0.mem_size == MEM_BYTE) begin
+        // MOV byte loads preserve the other byte of the destination register.
+        if (ex_mem_0.mov_byte_hi) begin
+          mem_wb_0.wb_data = {mem_result_0[7:0], ex_mem_0.mem_wdata[7:0]};  // write high
+        end else begin
+          mem_wb_0.wb_data = {ex_mem_0.mem_wdata[15:8], mem_result_0[7:0]}; // write low
+        end
+      end else begin
+        mem_wb_0.wb_data = mem_result_0[15:0];
+      end
       mem_wb_0.wb_data2 = mem_result_0[31:16];  // For 32-bit loads
     end else begin
       // Non-load: use ALU result
@@ -230,7 +247,15 @@ module memory_stage
     mem_wb_1.is_halt = ex_mem_1.is_halt;
     
     if (ex_mem_1.mem_read) begin
-      mem_wb_1.wb_data = mem_result_1[15:0];
+      if (ex_mem_1.mem_size == MEM_BYTE) begin
+        if (ex_mem_1.mov_byte_hi) begin
+          mem_wb_1.wb_data = {mem_result_1[7:0], ex_mem_1.mem_wdata[7:0]};
+        end else begin
+          mem_wb_1.wb_data = {ex_mem_1.mem_wdata[15:8], mem_result_1[7:0]};
+        end
+      end else begin
+        mem_wb_1.wb_data = mem_result_1[15:0];
+      end
       mem_wb_1.wb_data2 = mem_result_1[31:16];
     end else begin
       mem_wb_1.wb_data = ex_mem_1.alu_result[15:0];

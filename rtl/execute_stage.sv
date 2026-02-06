@@ -253,6 +253,7 @@ module execute_stage
     ex_mem_0.mem_write = id_ex_0.mem_write;
     ex_mem_0.mem_size = id_ex_0.mem_size;
     ex_mem_0.is_halt = id_ex_0.is_halt;
+    ex_mem_0.mov_byte_hi = id_ex_0.mov_byte_hi;
     
     // Select result based on instruction type
     if (id_ex_0.itype == ITYPE_MUL) begin
@@ -291,7 +292,13 @@ module execute_stage
       ex_mem_0.mem_addr = 32'h0;
     end
     
-    ex_mem_0.mem_wdata = operand_a_0;
+    // For MOV byte loads, operand_b_0 carries the old destination halfword so MEM can merge the byte.
+    // For stores, operand_a_0 is the store data.
+    if (id_ex_0.mem_read && id_ex_0.mem_size == MEM_BYTE) begin
+      ex_mem_0.mem_wdata = operand_b_0;
+    end else begin
+      ex_mem_0.mem_wdata = operand_a_0;
+    end
     
     // Branch information
     // If id_ex_0 is branch, shared unit result is for us
@@ -314,6 +321,7 @@ module execute_stage
     ex_mem_1.mem_write = id_ex_1.mem_write;
     ex_mem_1.mem_size = id_ex_1.mem_size;
     ex_mem_1.is_halt = id_ex_1.is_halt;
+    ex_mem_1.mov_byte_hi = id_ex_1.mov_byte_hi;
     
     if (id_ex_1.itype == ITYPE_MUL) begin
       // If id_ex_1 is MUL, check if id_ex_0 was MUL.
@@ -351,7 +359,11 @@ module execute_stage
       ex_mem_1.mem_addr = 32'h0;
     end
     
-    ex_mem_1.mem_wdata = operand_a_1;
+    if (id_ex_1.mem_read && id_ex_1.mem_size == MEM_BYTE) begin
+      ex_mem_1.mem_wdata = operand_b_1;
+    end else begin
+      ex_mem_1.mem_wdata = operand_a_1;
+    end
     
     // Branch information
     // We only use the shared branch unit if id_ex_0 was NOT a branch.

@@ -151,7 +151,7 @@ run_core_any_tb: core_any_tb
 		exit 1; \
 	fi
 	@echo "Running program: $(PROGRAM)"
-	cd $(BUILD_DIR) && $(VVP) core_any_tb.vvp +PROGRAM=../$(PROGRAM) +DEBUG
+	cd $(BUILD_DIR) && $(VVP) core_any_tb.vvp +PROGRAM=../$(PROGRAM)
 
 # Shortcut: run_any with PROGRAM variable
 run_any: run_core_any_tb
