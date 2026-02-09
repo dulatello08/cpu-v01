@@ -1,5 +1,9 @@
 # NeoCore16x32 Architecture Specification
 
+> [!TIP]
+> Docs Home: [DOCS_INDEX.md](DOCS_INDEX.md)
+
+
 ## Table of Contents
 
 1. [Introduction](#introduction)

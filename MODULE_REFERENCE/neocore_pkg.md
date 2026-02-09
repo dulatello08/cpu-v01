@@ -1,5 +1,9 @@
 # neocore_pkg.sv - Package Definitions
 
+> [!TIP]
+> Module Index: [README.md](README.md) | Docs Home: [../DOCS_INDEX.md](../DOCS_INDEX.md)
+
+
 ## Purpose
 
 The `neocore_pkg` SystemVerilog package contains all type definitions, constants, enumerations, and helper functions used throughout the NeoCore16x32 CPU implementation. It serves as the central repository for shared definitions to ensure consistency across all modules.

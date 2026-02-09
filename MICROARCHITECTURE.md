@@ -1,5 +1,9 @@
 # NeoCore16x32 Microarchitecture
 
+> [!TIP]
+> Docs Home: [DOCS_INDEX.md](DOCS_INDEX.md)
+
+
 ## Introduction
 
 This document provides detailed information about the internal microarchitectural implementation of the NeoCore16x32 CPU. It describes how the architectural specification is realized in hardware RTL modules.

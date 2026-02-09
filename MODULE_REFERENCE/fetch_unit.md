@@ -1,5 +1,9 @@
 # Fetch Unit Module Reference
 
+> [!TIP]
+> Module Index: [README.md](README.md) | Docs Home: [../DOCS_INDEX.md](../DOCS_INDEX.md)
+
+
 ## Overview
 The Fetch Unit retrieves variable-length instructions from unified memory and presents up to two decoded instruction windows per cycle. It does **not** buffer instructions itself; the Instruction Buffer (IB) lives in `cpu_core`. Fetch advances only when the IB accepts instructions.
 

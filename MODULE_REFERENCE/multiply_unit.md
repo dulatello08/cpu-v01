@@ -1,7 +1,11 @@
 # Multiply Unit Module Reference
 
+> [!TIP]
+> Module Index: [README.md](README.md) | Docs Home: [../DOCS_INDEX.md](../DOCS_INDEX.md)
+
 ## Overview
-The Multiply Unit performs 16-bit × 16-bit multiplication, producing a 32-bit result.
+
+`multiply_unit` performs 16x16 multiplication and returns split 32-bit results (`hi`/`lo`).
 
 ## Module: `multiply_unit`
 
@@ -9,66 +13,27 @@ The Multiply Unit performs 16-bit × 16-bit multiplication, producing a 32-bit r
 
 | Port | Direction | Width | Description |
 |------|-----------|-------|-------------|
-| `clk` | input | 1 | Clock signal (unused, for consistency) |
-| `rst` | input | 1 | Reset signal (unused, for consistency) |
-| `operand_a` | input | 16 | First operand |
-| `operand_b` | input | 16 | Second operand |
-| `mul_op` | input | `mul_op_e` | Multiply operation type |
-| `result` | output | 32 | 32-bit product |
+| `clk` | input | 1 | Clock (unused, retained for consistency) |
+| `rst` | input | 1 | Reset (unused, retained for consistency) |
+| `operand_a` | input | 16 | Multiplicand |
+| `operand_b` | input | 16 | Multiplier |
+| `is_signed` | input | 1 | `1` signed multiply, `0` unsigned multiply |
+| `result_lo` | output | 16 | Lower 16 bits of product |
+| `result_hi` | output | 16 | Upper 16 bits of product |
 
-### Supported Operations
+## Behavior
 
-| Operation | Type | Description |
-|-----------|------|-------------|
-| `MUL_UMULL` | Unsigned | Unsigned 16×16 = 32-bit result |
-| `MUL_SMULL` | Signed | Signed 16×16 = 32-bit result |
+- Signed mode (`is_signed=1`): operands are cast to signed 16-bit values before multiply.
+- Unsigned mode (`is_signed=0`): zero-extended multiply is used.
+- Product is computed combinationally and split into `result_hi`/`result_lo`.
 
-### Behavior
+## Notes
 
-#### Unsigned Multiply
-```systemverilog
-result = operand_a * operand_b;  // Zero-extended
-```
+- This module has no internal state.
+- `clk/rst` are kept for consistent module interfaces and warning suppression.
 
-#### Signed Multiply
-```systemverilog
-result = $signed(operand_a) * $signed(operand_b);
-```
+## Related Modules
 
-### Result Storage
-
-The 32-bit result is stored in two registers:
-- Lower 16 bits → rd_addr (destination register)
-- Upper 16 bits → rd2_addr (second destination)
-
-### Latency
-
-The multiply operation is combinational in the current implementation (1 cycle).
-
-### Usage Example
-
-```systemverilog
-multiply_unit mul (
-  .clk(clk),
-  .rst(rst),
-  .operand_a(rs1_data),
-  .operand_b(rs2_data),
-  .mul_op(MUL_UMULL),
-  .result(mul_result)  // 32-bit result
-);
-
-// In writeback:
-// registers[rd_addr] <= mul_result[15:0];   // Lower 16 bits
-// registers[rd2_addr] <= mul_result[31:16]; // Upper 16 bits
-```
-
-### Implementation Notes
-
-1. **Combinational**: Uses `*` operator, synthesizes to multiplier
-2. **No Pipeline**: Single-cycle operation (may be multi-cycle in FPGA)
-3. **Sign Extension**: Uses `$signed()` for signed multiply
-
-### Related Modules
-- `execute_stage.sv`: Instantiates multiply_unit
-- `writeback_stage.sv`: Writes 32-bit result to two registers
-- `neocore_pkg.sv`: Defines `mul_op_e` enum
+- [execute_stage.md](execute_stage.md)
+- [cpu_core.md](cpu_core.md)
+- [../ISA_REFERENCE.md](../ISA_REFERENCE.md)

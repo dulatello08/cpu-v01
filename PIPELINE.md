@@ -1,5 +1,9 @@
 # NeoCore16x32 Pipeline Architecture
 
+> [!TIP]
+> Docs Home: [DOCS_INDEX.md](DOCS_INDEX.md)
+
+
 ## Table of Contents
 
 1. [Pipeline Overview](#pipeline-overview)
@@ -1110,4 +1114,4 @@ Cycle 6-7: Branch penalty (flush and refill)
 
 ---
 
-This pipeline documentation is based entirely on the RTL implementation in the sv/rtl/ directory and verified through the testbenches in sv/tb/. All timing diagrams, hazard behaviors, and forwarding paths reflect the actual hardware implementation.
+This pipeline documentation is based entirely on the RTL implementation in the `rtl/` directory and verified through the testbenches in `tb/`. All timing diagrams, hazard behaviors, and forwarding paths reflect the actual hardware implementation.

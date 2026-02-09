@@ -1,5 +1,9 @@
 # NeoCore16x32 Memory System
 
+> [!TIP]
+> Docs Home: [DOCS_INDEX.md](DOCS_INDEX.md)
+
+
 ## Overview
 
 The NeoCore16x32 uses a **Von Neumann architecture** with a single unified memory for both instructions and data. All memory accesses use **big-endian byte ordering**, and the memory is implemented using FPGA block RAM (BRAM) for synthesis efficiency.

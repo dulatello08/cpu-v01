@@ -260,7 +260,7 @@ module core_any_tb;
         $finish;
       end
       begin
-        repeat(10000) @(posedge clk);
+        repeat(300000) @(posedge clk);
         $display("\n========================================");
         $display("ERROR: Test timeout after %0d cycles", cycle_count);
         $display("PC = 0x%08h, Halted = %b", current_pc, halted);

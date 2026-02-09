@@ -1,5 +1,9 @@
 # Microarchitecture Optimization Guide: Path to 50 MHz
 
+> [!TIP]
+> Docs Home: [DOCS_INDEX.md](DOCS_INDEX.md)
+
+
 **Target Frequency:** 50 MHz  
 **Current Baseline:** ~25 MHz (Passing with 0.14ns margin)  
 **Architecture:** NeoCore 16x32 (16-bit Data, 32-bit Address, Variable Length ISA, Dual-Issue)

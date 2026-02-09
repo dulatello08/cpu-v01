@@ -1,5 +1,9 @@
 # Issue Unit Module Reference
 
+> [!TIP]
+> Module Index: [README.md](README.md) | Docs Home: [../DOCS_INDEX.md](../DOCS_INDEX.md)
+
+
 ## Overview
 The Issue Unit determines whether one or two instructions can be issued simultaneously based on resource hazards, data dependencies, and instruction types. It implements the dual-issue decision logic for the NeoCore16x32 pipeline.
 

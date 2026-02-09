@@ -1,5 +1,9 @@
 # Unified Memory Module Reference
 
+> [!TIP]
+> Module Index: [README.md](README.md) | Docs Home: [../DOCS_INDEX.md](../DOCS_INDEX.md)
+
+
 ## Overview
 The Unified Memory module implements a Von Neumann architecture memory system with separate instruction fetch and data access ports.
 

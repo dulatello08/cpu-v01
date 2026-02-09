@@ -1,5 +1,9 @@
 # NeoCore16x32 Implementation Notes
 
+> [!TIP]
+> Docs Home: [DOCS_INDEX.md](DOCS_INDEX.md)
+
+
 ## Overview
 
 This document explains the design decisions, trade-offs, and rationale behind the NeoCore16x32 CPU implementation. It provides insight into why certain choices were made and documents alternative approaches that were considered.

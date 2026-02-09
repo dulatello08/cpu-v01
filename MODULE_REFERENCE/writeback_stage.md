@@ -1,5 +1,9 @@
 # Writeback Stage Module Reference
 
+> [!TIP]
+> Module Index: [README.md](README.md) | Docs Home: [../DOCS_INDEX.md](../DOCS_INDEX.md)
+
+
 ## Overview
 The Writeback Stage commits instruction results to the register file and generates the halt signal when HLT instruction completes.
 
