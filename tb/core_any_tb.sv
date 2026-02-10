@@ -89,15 +89,83 @@ module core_any_tb;
   // Cycle counter
   int cycle_count;
   int dual_issue_count;
+  int fetch_dual_count;
+  int ib_dual_count;
+  int fetch_bubble_count;
+  int ib_block_count;
+  int branch_taken_count;
+  int mem_req_count;
+  int mem_ack_count;
+  int fetch_no_hi_count;
+  int fetch_straddle_stall_count;
+  int issue_inst_count;
+  int fetch_inst_count;
+  int ib_inst_count;
   
   always_ff @(posedge clk) begin
     if (rst) begin
       cycle_count <= 0;
       dual_issue_count <= 0;
+      fetch_dual_count <= 0;
+      ib_dual_count <= 0;
+      fetch_bubble_count <= 0;
+      ib_block_count <= 0;
+      branch_taken_count <= 0;
+      mem_req_count <= 0;
+      mem_ack_count <= 0;
+      fetch_no_hi_count <= 0;
+      fetch_straddle_stall_count <= 0;
+      issue_inst_count <= 0;
+      fetch_inst_count <= 0;
+      ib_inst_count <= 0;
     end else begin
       cycle_count <= cycle_count + 1;
+      if (dut.issue_inst0) begin
+        issue_inst_count <= issue_inst_count + 1;
+      end
+      if (dut.issue_inst1) begin
+        issue_inst_count <= issue_inst_count + 1;
+      end
+      if (dut.fetch.valid_0) begin
+        fetch_inst_count <= fetch_inst_count + 1;
+      end
+      if (dut.fetch.valid_1) begin
+        fetch_inst_count <= fetch_inst_count + 1;
+      end
+      if (dut.ib_out_0.valid) begin
+        ib_inst_count <= ib_inst_count + 1;
+      end
+      if (dut.ib_out_1.valid) begin
+        ib_inst_count <= ib_inst_count + 1;
+      end
       if (dual_issue_active) begin
         dual_issue_count <= dual_issue_count + 1;
+      end
+      if (dut.fetch.valid_0 && dut.fetch.valid_1) begin
+        fetch_dual_count <= fetch_dual_count + 1;
+      end
+      if (dut.ib_out_0.valid && dut.ib_out_1.valid) begin
+        ib_dual_count <= ib_dual_count + 1;
+      end
+      if (!dut.fetch.valid_0) begin
+        fetch_bubble_count <= fetch_bubble_count + 1;
+      end
+      if (dut.fetch.valid_0 && (dut.accept_count == 2'd0)) begin
+        ib_block_count <= ib_block_count + 1;
+      end
+      if (dut.branch_taken) begin
+        branch_taken_count <= branch_taken_count + 1;
+      end
+      if (dut.fetch.mem_req) begin
+        mem_req_count <= mem_req_count + 1;
+      end
+      if (mem_if_ack) begin
+        mem_ack_count <= mem_ack_count + 1;
+      end
+      if (!dut.fetch.buf_hi_valid) begin
+        fetch_no_hi_count <= fetch_no_hi_count + 1;
+      end else if (!dut.fetch.inst0_fits) begin
+        fetch_straddle_stall_count <= fetch_straddle_stall_count + 1;
       end
     end
   end
@@ -245,8 +313,31 @@ module core_any_tb;
         $display("\n========================================");
         $display("Program halted at PC = 0x%08h", current_pc);
         $display("Total cycles: %0d", cycle_count);
+        $display("IPC (issued): %.3f", 1.0 * issue_inst_count / cycle_count);
         $display("Dual-issue cycles: %0d (%.1f%%)", dual_issue_count, 
                  100.0 * dual_issue_count / cycle_count);
+        if ($test$plusargs("PROFILE")) begin
+          $display("Fetch IPC (valid): %.3f", 1.0 * fetch_inst_count / cycle_count);
+          $display("IB IPC (valid): %.3f", 1.0 * ib_inst_count / cycle_count);
+          $display("Fetch dual-valid cycles: %0d (%.1f%%)",
+                   fetch_dual_count, 100.0 * fetch_dual_count / cycle_count);
+          $display("IB dual-valid cycles: %0d (%.1f%%)",
+                   ib_dual_count, 100.0 * ib_dual_count / cycle_count);
+          $display("Fetch bubbles (valid0=0): %0d (%.1f%%)",
+                   fetch_bubble_count, 100.0 * fetch_bubble_count / cycle_count);
+          $display("IB blocked (valid0 & accept=0): %0d (%.1f%%)",
+                   ib_block_count, 100.0 * ib_block_count / cycle_count);
+          $display("Branch taken cycles: %0d (%.1f%%)",
+                   branch_taken_count, 100.0 * branch_taken_count / cycle_count);
+          $display("Fetch mem_req cycles: %0d (%.1f%%)",
+                   mem_req_count, 100.0 * mem_req_count / cycle_count);
+          $display("Fetch mem_ack cycles: %0d (%.1f%%)",
+                   mem_ack_count, 100.0 * mem_ack_count / cycle_count);
+          $display("Fetch no-HI-valid cycles: %0d (%.1f%%)",
+                   fetch_no_hi_count, 100.0 * fetch_no_hi_count / cycle_count);
+          $display("Fetch inst0-fits stalls: %0d (%.1f%%)",
+                   fetch_straddle_stall_count, 100.0 * fetch_straddle_stall_count / cycle_count);
+        end
         $display("========================================");
         
         // Dump all register values in hex format
