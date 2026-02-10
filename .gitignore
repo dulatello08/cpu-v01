@@ -7,3 +7,5 @@ core_top.json
 *.vcd
 cmake-build-debug
 AGENTS.md
+*.json
+*.config

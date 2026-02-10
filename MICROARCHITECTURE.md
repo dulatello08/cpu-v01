@@ -214,7 +214,8 @@ prefetches are tracked to avoid mis‑routing on block shifts.
 
 ### Timing
 
-- **Fetch Latency**: 1 cycle (memory read)
+- **Fetch Request Path**: Registered at fetch output (adds one frontend control cycle)
+- **Fetch Latency**: 1 cycle from `mem_req` to `mem_ack` (memory read path)
 - **Throughput**: Up to 2 instructions per cycle (if both fit and accepted)
 
 ---

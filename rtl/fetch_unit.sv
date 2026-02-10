@@ -81,14 +81,29 @@ module fetch_unit
   logic [31:0] req_addr;      // Next address to request
   logic        req_valid;     // Request output valid
   req_dest_e   req_dest;      // Destination for the request response
+  logic        req_is_prefetch;
+
+  // Registered request output stage (+1 cycle cut on mem request path)
+  logic        mem_req_q;
+  logic [31:0] mem_addr_q;
+  req_dest_e   mem_req_dest_q;
+  logic        mem_req_prefetch_q;
+
+  // Explicit single-inflight tracking for request/ack bookkeeping
+  logic        inflight_valid_q;
+  req_dest_e   inflight_dest_q;
+  logic        inflight_prefetch_q;
   
   // PC Update Logic (Combinational Next PC)
   logic [31:0] pc_after_accept;
   logic [4:0]  accept_len;
-  logic [31:0] next_block_addr;
-  logic        shift_predicted;
+  logic [5:0]  pc_offset_after_accept;
+  logic [1:0]  block_step_after_accept;
+  logic        shift_one_predicted;
   logic        need_hi_fetch;
   logic        need_lo_fetch;
+  logic        prefetch_arm_d;
+  logic        prefetch_arm_q;
   logic        prefetch_next;
   
   always_comb begin
@@ -98,14 +113,21 @@ module fetch_unit
 
     // Advance based on instructions actually accepted into the IB stage.
     pc_after_accept = current_pc + {27'h0, accept_len};
-    next_block_addr = pc_after_accept & 32'hFFFF_FFF0;
-    shift_predicted = (next_block_addr == (buf_base_addr + 32'd16));
+    pc_offset_after_accept = {2'b00, current_pc[3:0]} + {1'b0, accept_len};
+    block_step_after_accept = 2'd0;
+    if (pc_offset_after_accept >= 6'd32) begin
+      block_step_after_accept = 2'd2;
+    end else if (pc_offset_after_accept >= 6'd16) begin
+      block_step_after_accept = 2'd1;
+    end
+    shift_one_predicted = (block_step_after_accept == 2'd1);
 
     need_hi_fetch = !buf_hi_valid && !pending_hi_fetch;
     need_lo_fetch = buf_hi_valid && !buf_lo_valid && !pending_lo_fetch;
     // With a 16-byte maximum two-instruction window, we only prefetch one block ahead.
-    prefetch_next = buf_hi_valid && buf_lo_valid && shift_predicted &&
-                    !pending_lo_fetch;
+    prefetch_arm_d = buf_hi_valid && buf_lo_valid && shift_one_predicted &&
+                     !pending_lo_fetch;
+    prefetch_next = prefetch_arm_q && !pending_lo_fetch;
   end
 
   // Request scheduling: prefer filling HI, then LO, then speculative next block.
@@ -113,6 +135,7 @@ module fetch_unit
     req_valid = 1'b0;
     req_addr = 32'h0;
     req_dest = REQ_NONE;
+    req_is_prefetch = 1'b0;
     state_next = state;
 
     if (need_hi_fetch) begin
@@ -129,6 +152,7 @@ module fetch_unit
       req_valid = 1'b1;
       req_addr = buf_base_addr + 32'h20;
       req_dest = REQ_LO;
+      req_is_prefetch = 1'b1;
       state_next = FETCH_LO;
     end else begin
       if (buf_hi_valid && buf_lo_valid) state_next = STEADY;
@@ -261,42 +285,75 @@ module fetch_unit
   // ============================================================================
   // Sequential Logic
   // ============================================================================
-  
-  req_dest_e resp_dest_q;
 
+  // Isolate PC/base pointer updates from buffer/memory bookkeeping to reduce
+  // cross-coupled control depth in the fetch state cone.
+  always_ff @(posedge clk) begin
+    if (rst) begin
+      current_pc <= 32'h0;
+      buf_base_addr <= 32'h0;
+    end else if (branch_taken) begin
+      current_pc <= branch_target;
+      buf_base_addr <= branch_target & 32'hFFFF_FFF0;
+    end else if (accept_count != 2'd0) begin
+      current_pc <= pc_after_accept;
+      if (block_step_after_accept == 2'd1) begin
+        buf_base_addr <= buf_base_addr + 32'd16;
+      end else if (block_step_after_accept == 2'd2) begin
+        buf_base_addr <= buf_base_addr + 32'd32;
+      end
+    end
+  end
+  
   always_ff @(posedge clk) begin
     logic [127:0] n_buf_hi;
     logic [127:0] n_buf_lo;
     logic        n_hi_valid;
     logic        n_lo_valid;
-    logic [31:0] n_buf_base;
     logic        n_pending_hi;
     logic        n_pending_lo;
     logic        n_pending_lo_prefetch;
-    req_dest_e   resp_dest_n;
+    logic        n_prefetch_arm;
+    logic        n_mem_req;
+    logic [31:0] n_mem_addr;
+    req_dest_e   n_mem_req_dest;
+    logic        n_mem_req_prefetch;
+    logic        n_inflight_valid;
+    req_dest_e   n_inflight_dest;
+    logic        n_inflight_prefetch;
 
     if (rst) begin
         state <= IDLE;
-        current_pc <= 32'h0; // Reset vector 0
-        buf_base_addr <= 32'h0;
         buf_hi_valid <= 1'b0;
         buf_lo_valid <= 1'b0;
         pending_hi_fetch <= 1'b0;
         pending_lo_fetch <= 1'b0;
         pending_lo_prefetch <= 1'b0;
-        resp_dest_q <= REQ_NONE;
+        prefetch_arm_q <= 1'b0;
+        mem_req_q <= 1'b0;
+        mem_addr_q <= 32'h0;
+        mem_req_dest_q <= REQ_NONE;
+        mem_req_prefetch_q <= 1'b0;
+        inflight_valid_q <= 1'b0;
+        inflight_dest_q <= REQ_NONE;
+        inflight_prefetch_q <= 1'b0;
         
     end else if (branch_taken) begin
         // Flush and Branch
         state <= FETCH_HI;
-        current_pc <= branch_target;
-        buf_base_addr <= branch_target & 32'hFFFF_FFF0; // Align 16
         buf_hi_valid <= 1'b0;
         buf_lo_valid <= 1'b0;
         pending_hi_fetch <= 1'b0;
         pending_lo_fetch <= 1'b0;
         pending_lo_prefetch <= 1'b0;
-        resp_dest_q <= REQ_NONE;
+        prefetch_arm_q <= 1'b0;
+        mem_req_q <= 1'b0;
+        mem_addr_q <= 32'h0;
+        mem_req_dest_q <= REQ_NONE;
+        mem_req_prefetch_q <= 1'b0;
+        inflight_valid_q <= 1'b0;
+        inflight_dest_q <= REQ_NONE;
+        inflight_prefetch_q <= 1'b0;
         
     end else begin
         // Defaults
@@ -304,15 +361,21 @@ module fetch_unit
         n_buf_lo   = buf_lo;
         n_hi_valid = buf_hi_valid;
         n_lo_valid = buf_lo_valid;
-        n_buf_base = buf_base_addr;
         n_pending_hi = pending_hi_fetch;
         n_pending_lo = pending_lo_fetch;
         n_pending_lo_prefetch = pending_lo_prefetch;
-        resp_dest_n = resp_dest_q;
+        n_prefetch_arm = prefetch_arm_d;
+        n_mem_req = 1'b0;
+        n_mem_addr = mem_addr_q;
+        n_mem_req_dest = mem_req_dest_q;
+        n_mem_req_prefetch = mem_req_prefetch_q;
+        n_inflight_valid = inflight_valid_q;
+        n_inflight_dest = inflight_dest_q;
+        n_inflight_prefetch = inflight_prefetch_q;
 
-        // Capture memory responses regardless of backend stalls
-        if (mem_ack) begin
-            case (resp_dest_q)
+        // Consume memory response from the single inflight request.
+        if (mem_ack && inflight_valid_q) begin
+            case (inflight_dest_q)
                 REQ_HI: begin
                     n_buf_hi = mem_rdata;
                     n_hi_valid = 1'b1;
@@ -326,27 +389,34 @@ module fetch_unit
                 end
                 default: ;
             endcase
+            n_inflight_valid = 1'b0;
+            n_inflight_dest = REQ_NONE;
+            n_inflight_prefetch = 1'b0;
         end
 
-        // Track destination for next acknowledge
-        if (mem_req) begin
-            resp_dest_n = req_dest;
-            if (req_dest == REQ_HI) n_pending_hi = 1'b1;
-            if (req_dest == REQ_LO) begin
+        // Drive memory request stage from scheduler outputs (registered pulse).
+        // Keep this before shift bookkeeping so LO->HI reclassification remains correct.
+        if (req_valid && !n_inflight_valid) begin
+            n_mem_req = 1'b1;
+            n_mem_addr = req_addr;
+            n_mem_req_dest = req_dest;
+            n_mem_req_prefetch = req_is_prefetch;
+            n_inflight_valid = 1'b1;
+            n_inflight_dest = req_dest;
+            n_inflight_prefetch = req_is_prefetch;
+
+            if (req_dest == REQ_HI) begin
+                n_pending_hi = 1'b1;
+            end else if (req_dest == REQ_LO) begin
                 n_pending_lo = 1'b1;
-                n_pending_lo_prefetch = prefetch_next;
+                n_pending_lo_prefetch = req_is_prefetch;
             end
-        end else if (mem_ack) begin
-            resp_dest_n = REQ_NONE;
         end
 
         if (accept_count != 2'd0) begin
-            current_pc <= pc_after_accept;
-
             // Buffer shift based on the post-accept PC (max two-instruction window is 16 bytes)
-            if (next_block_addr != n_buf_base) begin
-                if (next_block_addr == n_buf_base + 32'd16) begin
-                    n_buf_base = next_block_addr;
+            if (block_step_after_accept != 2'd0) begin
+                if (block_step_after_accept == 2'd1) begin
                     n_buf_hi = n_buf_lo;
                     n_hi_valid = n_lo_valid;
                     n_lo_valid = 1'b0;
@@ -356,10 +426,12 @@ module fetch_unit
                         n_pending_hi = 1'b1;
                         n_pending_lo = 1'b0;
                         n_pending_lo_prefetch = 1'b0;
-                        if (resp_dest_n == REQ_LO) resp_dest_n = REQ_HI;
+                        if (n_inflight_valid && (n_inflight_dest == REQ_LO) &&
+                            !n_inflight_prefetch) begin
+                            n_inflight_dest = REQ_HI;
+                        end
                     end
                 end else begin
-                    n_buf_base = next_block_addr;
                     n_hi_valid = 1'b0;
                     n_lo_valid = 1'b0;
                     
@@ -367,7 +439,13 @@ module fetch_unit
                     n_pending_hi = 1'b0;
                     n_pending_lo = 1'b0;
                     n_pending_lo_prefetch = 1'b0;
-                    resp_dest_n = REQ_NONE;
+                    n_prefetch_arm = 1'b0;
+                    n_mem_req = 1'b0;
+                    n_mem_req_dest = REQ_NONE;
+                    n_mem_req_prefetch = 1'b0;
+                    n_inflight_valid = 1'b0;
+                    n_inflight_dest = REQ_NONE;
+                    n_inflight_prefetch = 1'b0;
                 end
             end
         end
@@ -377,18 +455,24 @@ module fetch_unit
         buf_lo <= n_buf_lo;
         buf_hi_valid <= n_hi_valid;
         buf_lo_valid <= n_lo_valid;
-        buf_base_addr <= n_buf_base;
+        prefetch_arm_q <= n_prefetch_arm;
         pending_hi_fetch <= n_pending_hi;
         pending_lo_fetch <= n_pending_lo;
         pending_lo_prefetch <= n_pending_lo_prefetch;
-        resp_dest_q <= resp_dest_n;
+        mem_req_q <= n_mem_req;
+        mem_addr_q <= n_mem_addr;
+        mem_req_dest_q <= n_mem_req_dest;
+        mem_req_prefetch_q <= n_mem_req_prefetch;
+        inflight_valid_q <= n_inflight_valid;
+        inflight_dest_q <= n_inflight_dest;
+        inflight_prefetch_q <= n_inflight_prefetch;
         state <= state_next;
     end
   end
 
   // Assign memory request outputs
-  assign mem_req = req_valid && !branch_taken && !rst;
-  assign mem_addr = req_addr;
+  assign mem_req = mem_req_q && !branch_taken && !rst;
+  assign mem_addr = mem_addr_q;
 
   // ============================================================================
   // Debug / Testbench Signals

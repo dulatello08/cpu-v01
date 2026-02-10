@@ -55,11 +55,7 @@ module unified_memory #(
     // -- Port A (Instruction) --
     // Always reads a full 128-bit row (all 4 banks at the same Row Index)
     logic [BANK_ADDR_W-1:0] if_row_addr;
-    assign if_row_addr = if_addr[15:4]; // 16-bit physical addr space inside 64KB
-                                        // or ADDR_WIDTH... let's be safe:
-                                        // if_addr is byte address.
-                                        // Row is 16 bytes (128 bits).
-                                        // Row Index = if_addr / 16.
+    assign if_row_addr = if_addr[15:4];
                                         
     // -- Port B (Data) --
     logic [BANK_ADDR_W-1:0] data_row_addr;
@@ -139,7 +135,7 @@ module unified_memory #(
 
             // Initial load
             initial begin
-                $readmemh($sformatf("bank%0d_32.mem", i), mem); 
+                $readmemh($sformatf("bank%0d_32.garbage.mem", i), mem);
             end
         end
     endgenerate

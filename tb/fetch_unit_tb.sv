@@ -189,11 +189,18 @@ module fetch_unit_tb;
     @(posedge clk);
     while (!valid_0) @(posedge clk);
     
-    // Cycle 4: Should be at 0x22 (Dual issue of 1E and 20)
-    // Note: With unaligned fetch, we can dual issue across the 16-byte boundary!
+    // Cycle 4: With the registered fetch request stage, boundary dual-issue is
+    // delayed by one cycle, so we first observe PC=0x20.
     $display("Time %0t: Cycle 4. PC0=%h", $time, pc_0);
-    if (pc_0 == 32'h22) $display("PASS: Crossed 16-byte boundary to 0x22 (Dual Issue!)");
-    else $display("FAIL: Expected PC=22, got %h", pc_0);
+    if (pc_0 == 32'h20) $display("PASS: Boundary step reached PC=0x20");
+    else $display("FAIL: Expected PC=20, got %h", pc_0);
+
+    // Cycle 5: Now we should see the boundary-crossed dual-issue advancement.
+    @(posedge clk);
+    while (!valid_0) @(posedge clk);
+    $display("Time %0t: Cycle 5. PC0=%h", $time, pc_0);
+    if (pc_0 == 32'h24) $display("PASS: Boundary-crossed dual issue reached PC=0x24");
+    else $display("FAIL: Expected PC=24, got %h", pc_0);
     
     $finish;
   end

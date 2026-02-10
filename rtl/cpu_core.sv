@@ -174,48 +174,170 @@ module cpu_core
   end
   
   always_comb begin
-    int tail_idx;
-    
-    // Dequeue: shift toward head by ib_deq_count
+    // Default cleared state (prevents latch inference and keeps empty slots clean)
     for (int i = 0; i < IB_DEPTH; i++) begin
-      if (i + ib_deq_count < IB_DEPTH) begin
-        ib_valid_next[i] = ib_valid[i + ib_deq_count];
-        ib_pc_next[i] = ib_pc[i + ib_deq_count];
-        ib_inst_data_next[i] = ib_inst_data[i + ib_deq_count];
-        ib_inst_len_next[i] = ib_inst_len[i + ib_deq_count];
-      end else begin
-        ib_valid_next[i] = 1'b0;
-        ib_pc_next[i] = 32'h0;
-        ib_inst_data_next[i] = 72'h0;
-        ib_inst_len_next[i] = 4'h0;
-      end
+      ib_valid_next[i] = 1'b0;
+      ib_pc_next[i] = 32'h0;
+      ib_inst_data_next[i] = 72'h0;
+      ib_inst_len_next[i] = 4'h0;
     end
-    
-    // Enqueue: append new entries at tail
-    tail_idx = ib_count_after_deq;
+
+    // Dequeue: explicit 0/1/2-entry shift with fixed-index moves.
+    unique case (ib_deq_count)
+      2'd0: begin
+        ib_valid_next[0] = ib_valid[0]; ib_pc_next[0] = ib_pc[0];
+        ib_inst_data_next[0] = ib_inst_data[0]; ib_inst_len_next[0] = ib_inst_len[0];
+        ib_valid_next[1] = ib_valid[1]; ib_pc_next[1] = ib_pc[1];
+        ib_inst_data_next[1] = ib_inst_data[1]; ib_inst_len_next[1] = ib_inst_len[1];
+        ib_valid_next[2] = ib_valid[2]; ib_pc_next[2] = ib_pc[2];
+        ib_inst_data_next[2] = ib_inst_data[2]; ib_inst_len_next[2] = ib_inst_len[2];
+        ib_valid_next[3] = ib_valid[3]; ib_pc_next[3] = ib_pc[3];
+        ib_inst_data_next[3] = ib_inst_data[3]; ib_inst_len_next[3] = ib_inst_len[3];
+        ib_valid_next[4] = ib_valid[4]; ib_pc_next[4] = ib_pc[4];
+        ib_inst_data_next[4] = ib_inst_data[4]; ib_inst_len_next[4] = ib_inst_len[4];
+        ib_valid_next[5] = ib_valid[5]; ib_pc_next[5] = ib_pc[5];
+        ib_inst_data_next[5] = ib_inst_data[5]; ib_inst_len_next[5] = ib_inst_len[5];
+      end
+      2'd1: begin
+        ib_valid_next[0] = ib_valid[1]; ib_pc_next[0] = ib_pc[1];
+        ib_inst_data_next[0] = ib_inst_data[1]; ib_inst_len_next[0] = ib_inst_len[1];
+        ib_valid_next[1] = ib_valid[2]; ib_pc_next[1] = ib_pc[2];
+        ib_inst_data_next[1] = ib_inst_data[2]; ib_inst_len_next[1] = ib_inst_len[2];
+        ib_valid_next[2] = ib_valid[3]; ib_pc_next[2] = ib_pc[3];
+        ib_inst_data_next[2] = ib_inst_data[3]; ib_inst_len_next[2] = ib_inst_len[3];
+        ib_valid_next[3] = ib_valid[4]; ib_pc_next[3] = ib_pc[4];
+        ib_inst_data_next[3] = ib_inst_data[4]; ib_inst_len_next[3] = ib_inst_len[4];
+        ib_valid_next[4] = ib_valid[5]; ib_pc_next[4] = ib_pc[5];
+        ib_inst_data_next[4] = ib_inst_data[5]; ib_inst_len_next[4] = ib_inst_len[5];
+      end
+      default: begin // Treat all non-zero/non-one as deq=2
+        ib_valid_next[0] = ib_valid[2]; ib_pc_next[0] = ib_pc[2];
+        ib_inst_data_next[0] = ib_inst_data[2]; ib_inst_len_next[0] = ib_inst_len[2];
+        ib_valid_next[1] = ib_valid[3]; ib_pc_next[1] = ib_pc[3];
+        ib_inst_data_next[1] = ib_inst_data[3]; ib_inst_len_next[1] = ib_inst_len[3];
+        ib_valid_next[2] = ib_valid[4]; ib_pc_next[2] = ib_pc[4];
+        ib_inst_data_next[2] = ib_inst_data[4]; ib_inst_len_next[2] = ib_inst_len[4];
+        ib_valid_next[3] = ib_valid[5]; ib_pc_next[3] = ib_pc[5];
+        ib_inst_data_next[3] = ib_inst_data[5]; ib_inst_len_next[3] = ib_inst_len[5];
+      end
+    endcase
+
+    // Enqueue: explicit tail slot mapping.
     if (accept_count >= 2'd1) begin
-      if (tail_idx < IB_DEPTH) begin
-        ib_valid_next[tail_idx] = ib_in_0.valid;
-        ib_pc_next[tail_idx] = ib_in_0.pc;
-        ib_inst_data_next[tail_idx] = ib_in_0.inst_data;
-        ib_inst_len_next[tail_idx] = ib_in_0.inst_len;
-      end
+      unique case (ib_count_after_deq)
+        3'd0: begin
+          ib_valid_next[0] = ib_in_0.valid;
+          ib_pc_next[0] = ib_in_0.pc;
+          ib_inst_data_next[0] = ib_in_0.inst_data;
+          ib_inst_len_next[0] = ib_in_0.inst_len;
+        end
+        3'd1: begin
+          ib_valid_next[1] = ib_in_0.valid;
+          ib_pc_next[1] = ib_in_0.pc;
+          ib_inst_data_next[1] = ib_in_0.inst_data;
+          ib_inst_len_next[1] = ib_in_0.inst_len;
+        end
+        3'd2: begin
+          ib_valid_next[2] = ib_in_0.valid;
+          ib_pc_next[2] = ib_in_0.pc;
+          ib_inst_data_next[2] = ib_in_0.inst_data;
+          ib_inst_len_next[2] = ib_in_0.inst_len;
+        end
+        3'd3: begin
+          ib_valid_next[3] = ib_in_0.valid;
+          ib_pc_next[3] = ib_in_0.pc;
+          ib_inst_data_next[3] = ib_in_0.inst_data;
+          ib_inst_len_next[3] = ib_in_0.inst_len;
+        end
+        3'd4: begin
+          ib_valid_next[4] = ib_in_0.valid;
+          ib_pc_next[4] = ib_in_0.pc;
+          ib_inst_data_next[4] = ib_in_0.inst_data;
+          ib_inst_len_next[4] = ib_in_0.inst_len;
+        end
+        3'd5: begin
+          ib_valid_next[5] = ib_in_0.valid;
+          ib_pc_next[5] = ib_in_0.pc;
+          ib_inst_data_next[5] = ib_in_0.inst_data;
+          ib_inst_len_next[5] = ib_in_0.inst_len;
+        end
+        default: ;
+      endcase
     end
+
     if (accept_count == 2'd2) begin
-      if (tail_idx + 1 < IB_DEPTH) begin
-        ib_valid_next[tail_idx + 1] = ib_in_1.valid;
-        ib_pc_next[tail_idx + 1] = ib_in_1.pc;
-        ib_inst_data_next[tail_idx + 1] = ib_in_1.inst_data;
-        ib_inst_len_next[tail_idx + 1] = ib_in_1.inst_len;
-      end
+      unique case (ib_count_after_deq)
+        3'd0: begin
+          ib_valid_next[1] = ib_in_1.valid;
+          ib_pc_next[1] = ib_in_1.pc;
+          ib_inst_data_next[1] = ib_in_1.inst_data;
+          ib_inst_len_next[1] = ib_in_1.inst_len;
+        end
+        3'd1: begin
+          ib_valid_next[2] = ib_in_1.valid;
+          ib_pc_next[2] = ib_in_1.pc;
+          ib_inst_data_next[2] = ib_in_1.inst_data;
+          ib_inst_len_next[2] = ib_in_1.inst_len;
+        end
+        3'd2: begin
+          ib_valid_next[3] = ib_in_1.valid;
+          ib_pc_next[3] = ib_in_1.pc;
+          ib_inst_data_next[3] = ib_in_1.inst_data;
+          ib_inst_len_next[3] = ib_in_1.inst_len;
+        end
+        3'd3: begin
+          ib_valid_next[4] = ib_in_1.valid;
+          ib_pc_next[4] = ib_in_1.pc;
+          ib_inst_data_next[4] = ib_in_1.inst_data;
+          ib_inst_len_next[4] = ib_in_1.inst_len;
+        end
+        3'd4: begin
+          ib_valid_next[5] = ib_in_1.valid;
+          ib_pc_next[5] = ib_in_1.pc;
+          ib_inst_data_next[5] = ib_in_1.inst_data;
+          ib_inst_len_next[5] = ib_in_1.inst_len;
+        end
+        default: ;
+      endcase
     end
-    
-    // Clear entries above new count
-    for (int i = 0; i < IB_DEPTH; i++) begin
-      if (i >= ib_count_next) begin
-        ib_valid_next[i] = 1'b0;
+
+    // Keep valid bits clamped to the computed occupancy.
+    unique case (ib_count_next)
+      3'd0: begin
+        ib_valid_next[0] = 1'b0;
+        ib_valid_next[1] = 1'b0;
+        ib_valid_next[2] = 1'b0;
+        ib_valid_next[3] = 1'b0;
+        ib_valid_next[4] = 1'b0;
+        ib_valid_next[5] = 1'b0;
       end
-    end
+      3'd1: begin
+        ib_valid_next[1] = 1'b0;
+        ib_valid_next[2] = 1'b0;
+        ib_valid_next[3] = 1'b0;
+        ib_valid_next[4] = 1'b0;
+        ib_valid_next[5] = 1'b0;
+      end
+      3'd2: begin
+        ib_valid_next[2] = 1'b0;
+        ib_valid_next[3] = 1'b0;
+        ib_valid_next[4] = 1'b0;
+        ib_valid_next[5] = 1'b0;
+      end
+      3'd3: begin
+        ib_valid_next[3] = 1'b0;
+        ib_valid_next[4] = 1'b0;
+        ib_valid_next[5] = 1'b0;
+      end
+      3'd4: begin
+        ib_valid_next[4] = 1'b0;
+        ib_valid_next[5] = 1'b0;
+      end
+      3'd5: begin
+        ib_valid_next[5] = 1'b0;
+      end
+      default: ; // 6 entries valid
+    endcase
   end
   
   always_ff @(posedge clk) begin
