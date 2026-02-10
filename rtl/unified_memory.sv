@@ -3,13 +3,20 @@
 // NeoCore 16x32 CPU - Unified Von Neumann Memory (BRAM-backed)
 //
 // Single unified memory for both instructions and data.
-// Re-implemented using 16 interleaved memory banks via GENERATE blocks
-// to force explicit Block RAM inference on ECP5.
+// Re-implemented using 4 interleaved 32-bit memory banks.
 //
 // Organization:
-//   16 Banks, interleaved by byte.
-//   Bank 0 stores addresses 0, 16, 32...
-//   Bank 1 stores addresses 1, 17, 33...
+//   4 Banks, interleaved by Word (32-bit).
+//   Bank 0 stores Words 0, 4, 8...  (Addr 0x00, 0x10, 0x20...)
+//   Bank 1 stores Words 1, 5, 9...  (Addr 0x04, 0x14, 0x24...)
+//   Bank 2 stores Words 2, 6, 10... (Addr 0x08, 0x18, 0x28...)
+//   Bank 3 stores Words 3, 7, 11... (Addr 0x0C, 0x1C, 0x2C...)
+//
+//   Address mapping from Byte Address (A):
+//   Global Word Index = A >> 2
+//   Bank Index        = (A >> 2) & 3  (i.e., A[3:2])
+//   Row Index         = A >> 4        (i.e., A[ADDR_WIDTH-1:4])
+//
 
 module unified_memory #(
     parameter MEM_SIZE_BYTES = 65536,  // 64 KB default
@@ -18,13 +25,13 @@ module unified_memory #(
     input  logic        clk,
     input  logic        rst,
 
-    // Instruction fetch port (Port A of BRAMs)
+    // Instruction fetch port (Port A of BRAMs) - Read Only, 128-bit aligned
     input  logic [ADDR_WIDTH-1:0] if_addr,
     input  logic                  if_req,
     output logic [127:0]          if_rdata,
     output logic                  if_ack,
 
-    // Data access port (Port B of BRAMs)
+    // Data access port (Port B of BRAMs) - R/W, 32-bit
     input  logic [ADDR_WIDTH-1:0] data_addr,
     input  logic [31:0]           data_wdata,
     input  logic [1:0]            data_size,  // 00=byte, 01=half, 10=word
@@ -34,259 +41,164 @@ module unified_memory #(
     output logic                  data_ack
 );
 
-    localparam BANKS = 16;
-    localparam BANK_DEPTH = MEM_SIZE_BYTES / BANKS;
+    localparam BANKS = 4;
+    localparam BANK_WIDTH = 32;
+    localparam BANK_BYTES = MEM_SIZE_BYTES / BANKS; 
+    // Depth in words (32-bit) per bank = Bytes / 4
+    localparam BANK_DEPTH = BANK_BYTES / 4; 
     localparam BANK_ADDR_W = $clog2(BANK_DEPTH);
-    localparam BANK_SEL_W = 4; // log2(16)
 
     // -------------------------------------------------------------------------
-    // Address / Control Logic (Combinational)
+    // Address Decoding
     // -------------------------------------------------------------------------
     
     // -- Port A (Instruction) --
-    logic [BANK_ADDR_W-1:0] if_row_base;
-    logic [BANK_SEL_W-1:0]  if_offset;
-    logic [BANK_SEL_W-1:0]  if_offset_reg;
-    logic [BANK_ADDR_W-1:0] if_bank_addrs [0:BANKS-1];
-    
-    assign if_row_base = if_addr[ADDR_WIDTH-1 : BANK_SEL_W];
-    assign if_offset   = if_addr[BANK_SEL_W-1 : 0];
-
-    logic [BANK_ADDR_W-1:0] if_row_next;
-    assign if_row_next = if_row_base + BANK_ADDR_W'(1);
-
-    always_comb begin
-        for (int i = 0; i < BANKS; i++) begin
-            if_bank_addrs[i] = (i < if_offset) ? if_row_next : if_row_base;
-        end
-    end
-
+    // Always reads a full 128-bit row (all 4 banks at the same Row Index)
+    logic [BANK_ADDR_W-1:0] if_row_addr;
+    assign if_row_addr = if_addr[15:4];
+                                        
     // -- Port B (Data) --
-    logic [BANK_ADDR_W-1:0] data_row_base;
-    logic [BANK_SEL_W-1:0]  data_offset;
-    logic [BANK_SEL_W-1:0]  data_offset_reg;
-    logic [1:0]             data_size_reg;
-    logic [BANK_ADDR_W-1:0] data_bank_addrs [0:BANKS-1];
-    logic [BANKS-1:0]       data_bank_we;
-    logic [7:0]             data_bank_wdata [0:BANKS-1];
-
-    assign data_row_base = data_addr[ADDR_WIDTH-1 : BANK_SEL_W];
-    assign data_offset   = data_addr[BANK_SEL_W-1 : 0];
+    logic [BANK_ADDR_W-1:0] data_row_addr;
+    logic [1:0]             data_bank_sel;
     
-    logic [BANK_ADDR_W-1:0] data_row_next;
-    assign data_row_next = data_row_base + BANK_ADDR_W'(1);
+    assign data_row_addr = data_addr[15:4];
+    assign data_bank_sel = data_addr[3:2];
 
-    // Port B Address Calculation
+    // -------------------------------------------------------------------------
+    // Data Port Write Enables (Byte Enables)
+    // -------------------------------------------------------------------------
+    logic [3:0] data_bank_we [0:BANKS-1]; 
+    // Each bank has 4 byte-enables [3:0] corresponding to its own 32-bit word.
+    
     always_comb begin
-        for (int i = 0; i < BANKS; i++) begin
-            data_bank_addrs[i] = (i < data_offset) ? data_row_next : data_row_base;
-        end
-    end
+        for (int i=0; i<BANKS; i++) data_bank_we[i] = 4'b0000;
 
-    // Port B Write Enable / Data Rotation Logic
-    always_comb begin
-        data_bank_we = '0;
-        
-        // 1. Write Enables
         if (data_we && data_req) begin
-            logic [15:0] base_mask;
+            logic [3:0] be;
+            // Decode size and low bits [1:0] to get Byte Enable within the 32-bit word
             case (data_size)
-                2'b00: base_mask = 16'b0000_0000_0000_0001; // Byte
-                2'b01: base_mask = 16'b0000_0000_0000_0011; // Half
-                2'b10: base_mask = 16'b0000_0000_0000_1111; // Word
-                default: base_mask = '0;
+                2'b00: begin // Byte
+                    case (data_addr[1:0])
+                        2'b00: be = 4'b1000; // Big Endian: Byte 0 is MSB [31:24]
+                        2'b01: be = 4'b0100;
+                        2'b10: be = 4'b0010;
+                        2'b11: be = 4'b0001;
+                    endcase
+                end
+                2'b01: begin // Half
+                    // Aligned halfwords
+                    if (data_addr[1] == 1'b0) be = 4'b1100; // Upper half
+                    else                      be = 4'b0011; // Lower half
+                end
+                2'b10: begin // Word
+                    be = 4'b1111;
+                end
+                default: be = 4'b0000;
             endcase
-            // Manual rotation for masks
-            for (int i = 0; i < BANKS; i++) begin
-                 int bit_idx;
-                 bit_idx = (i - data_offset) & 4'hF;
-                 if (bit_idx < 16)
-                     data_bank_we[i] = base_mask[bit_idx];
-                 else
-                     data_bank_we[i] = 0;
-            end
-        end
-        
-        // 2. Write Data Rotation
-        // Manual rotation to avoid dynamic shift issues in some tools
-        for (int i = 0; i < BANKS; i++) begin
-            logic [4:0] shift_idx; 
-            // We want data_wdata[0] (LSB) to go to bank[data_offset]
-            // So bank[i] gets byte from wdata corresponding to (i - offset) % 16
-            // data_wdata is 32 bits (4 bytes).
-            // Actually, let's stick to the previous logic but implementing it via mux logic per bank
             
-            // logic [127:0] wdata_exp = {data_wdata, 96'h0};
-            // The byte for bank 'i' comes from wdata byte 'k' such that (offset + k) % 16 = i
-            // k = (i - offset) % 16
-            
-            // Wait, implementing the full barrel shifter logic explicitly:
-            int src_byte_idx;
-            // Handle wrap around: (i - data_offset) mod 16
-            // arithmetic with 4-bit subtraction handles modulo 16 naturally
-            src_byte_idx = (i - data_offset) & 4'hF; 
-            
-            if (src_byte_idx < 4) begin
-                // data_wdata is [31:0], so bytes are 3, 2, 1, 0.
-                // data_wdata[7:0] is byte 0? It's big endian or little?
-                // Big-endian: MSB at lowest address. 
-                // data_wdata[31:24] -> offset+0
-                // data_wdata[23:16] -> offset+1
-                
-                // My previous logic was: wdata_exp = {data_wdata, 96'h0}; (padded at MSB)
-                // then rotated.
-                // If wdata = 0xAABBCCDD (32-bit). Byte 0 (MSB) = AA.
-                // wdata_exp = AABBCCDD_00...
-                // shift right by offset*8.
-                // If offset=0: byte 0 (AA) -> byte 15 of 128-bit? No, indices.
-                
-                // Let's use the verified "double width" trick which is cleaner.
-                logic [63:0] wdata_double; 
-                wdata_double = {data_wdata, data_wdata}; 
-                // We want to extract a 32-bit window, but mapped to banks.
-                // Actually, let's just use the previous rotation logic but unroll it.
-                
-                // Re-implementation of the rotation:
-                // wdata_rot[bank_i] = wdata_exp[bank_i rotated by offset]
-                
-                // Easier: Just select the byte based on the difference
-                case (src_byte_idx)
-                    0: data_bank_wdata[i] = data_wdata[31:24];
-                    1: data_bank_wdata[i] = data_wdata[23:16];
-                    2: data_bank_wdata[i] = data_wdata[15:8];
-                    3: data_bank_wdata[i] = data_wdata[7:0];
-                    default: data_bank_wdata[i] = 8'h00;
-                endcase
-            end else begin
-                data_bank_wdata[i] = 8'h00;
-            end
+            // Activate WE for the selected bank
+            data_bank_we[data_bank_sel] = be;
         end
     end
 
     // -------------------------------------------------------------------------
     // Memory Generation
     // -------------------------------------------------------------------------
-    
-    // Wires to carry read data out of the generate block
-    logic [7:0] if_bank_rdata [0:BANKS-1];
-    logic [7:0] data_bank_rdata [0:BANKS-1];
+    logic [31:0] if_bank_rdata [0:BANKS-1];
+    logic [31:0] data_bank_rdata_raw [0:BANKS-1];
 
     generate
         for (genvar i = 0; i < BANKS; i++) begin : bank_gen
-            // Local memory array for this bank
-            // (* ram_style = "block" *) // Optional hint for Yosys
-            logic [7:0] mem [0:BANK_DEPTH-1];
-            logic [7:0] rdata_a;
-            logic [7:0] rdata_b;
+            // Infer 32-bit wide BRAM with Byte Enables
+            // Standard idiom for ECP5 / Gowin / Xilinx
             
-            // Port A (Instruction Fetch) - Read Only
+            logic [31:0] mem [0:BANK_DEPTH-1];
+            logic [31:0] rdata_a;
+            logic [31:0] rdata_b;
+            
+            // Port A (Instruction) - Read Only
             always_ff @(posedge clk) begin
-                rdata_a <= mem[if_bank_addrs[i]];
+                rdata_a <= mem[if_row_addr];
             end
             
-            // Port B (Data Access) - Read / Write
+            // Port B (Data) - Read / Write with Byte Enables
             always_ff @(posedge clk) begin
-                if (data_bank_we[i]) begin
-                    mem[data_bank_addrs[i]] <= data_bank_wdata[i];
-                end
-                rdata_b <= mem[data_bank_addrs[i]];
+                if (data_bank_we[i][3]) mem[data_row_addr][31:24] <= data_wdata[31:24];
+                if (data_bank_we[i][2]) mem[data_row_addr][23:16] <= data_wdata[23:16];
+                if (data_bank_we[i][1]) mem[data_row_addr][15:8]  <= data_wdata[15:8];
+                if (data_bank_we[i][0]) mem[data_row_addr][7:0]   <= data_wdata[7:0];
+                rdata_b <= mem[data_row_addr];
             end
             
             assign if_bank_rdata[i] = rdata_a;
-            assign data_bank_rdata[i] = rdata_b;
+            assign data_bank_rdata_raw[i] = rdata_b;
 
-            // Memory Initialization for pure Verilog / Yosys
-            // This allows us to use ecpbram or just load initial code
-            // format: bank0.mem, bank1.mem ... bank15.mem
+            // Initial load
             initial begin
-                // Optional: Initialize to zero or specific pattern if file missing
-                // In simulation this might warn if file not found, which is fine.
-                // For hardware, we want this to be picked up.
-                $readmemh($sformatf("bank%0d.mem", i), mem); 
+                $readmemh($sformatf("bank%0d_32.garbage.mem", i), mem);
             end
         end
     endgenerate
 
     // -------------------------------------------------------------------------
-    // Output Registers / Alignment Logic
+    // Output Logic
     // -------------------------------------------------------------------------
 
-    // Port A Output Control
+    // -- Port A Output --
+    // Concatenate banks to form 128-bit row.
+    // Big Endian: Bank 0 is at offset 0 (MSBytes of the 128-bit block).
+    // if_rdata[127:0] = {Bank0, Bank1, Bank2, Bank3}
+    assign if_rdata = {if_bank_rdata[0], if_bank_rdata[1], if_bank_rdata[2], if_bank_rdata[3]};
+
     always_ff @(posedge clk) begin
-        if (rst) begin
-            if_ack <= 1'b0;
-            if_offset_reg <= '0;
-        end else begin
-            if (if_req) begin
-                if_offset_reg <= if_offset;
-                if_ack <= 1'b1;
-            end else begin
-                if_ack <= 1'b0;
-            end
-        end
-    end
-    
-    // Port A Alignment (Combinational)
-    always_comb begin
-        logic [127:0] rdata_raw;
-        logic [127:0] rdata_aligned;
-        
-        for (int i = 0; i < BANKS; i++) begin
-            rdata_raw[127 - (i*8) -: 8] = if_bank_rdata[i];
-        end
-        
-        // Manual barrel shifter for read data
-        // We want if_rdata[127:120] (Byte 0) to be rdata_raw corresponding to offset
-        // Manual barrel shifter for read data
-        for (int i = 0; i < 16; i++) begin
-            int src_bank_idx;
-            logic [7:0] byte_val;
-            
-            src_bank_idx = (i + if_offset_reg) & 4'hF;
-            byte_val = if_bank_rdata[src_bank_idx];
-            rdata_aligned[127 - (i*8) -: 8] = byte_val;
-        end
-        
-        if_rdata = rdata_aligned;
+        if (rst) if_ack <= 1'b0;
+        else     if_ack <= if_req;
     end
 
-    // Port B Output Control
+    // -- Port B Output --
+    // Mux the read data based on bank select
+    logic [31:0] data_rdata_comb;
+    logic [1:0]  data_bank_sel_reg;
+    logic [1:0]  data_addr_low_reg; // For sub-word alignment [1:0]
+    logic [1:0]  data_size_reg;
+
     always_ff @(posedge clk) begin
         if (rst) begin
             data_ack <= 1'b0;
-            data_offset_reg <= '0;
+            data_bank_sel_reg <= '0;
+            data_addr_low_reg <= '0;
             data_size_reg <= '0;
         end else begin
+            data_ack <= data_req;
             if (data_req) begin
-                data_offset_reg <= data_offset;
-                data_size_reg <= data_size;
-                data_ack <= 1'b1;
-            end else begin
-                data_ack <= 1'b0;
+                data_bank_sel_reg <= data_bank_sel;
+                data_addr_low_reg <= data_addr[1:0];
+                data_size_reg     <= data_size;
             end
         end
     end
 
-    // Port B Alignment (Combinational)
+    assign data_rdata_comb = data_bank_rdata_raw[data_bank_sel_reg];
+
+    // Sub-word alignment for Read
     always_comb begin
-        logic [127:0] rdata_raw;
-        logic [127:0] rdata_aligned;
-        
-        for (int i = 0; i < BANKS; i++) begin
-            rdata_raw[127 - (i*8) -: 8] = data_bank_rdata[i];
-        end
-        
-        // Manual barrel shifter for data port
-        for (int i = 0; i < 16; i++) begin
-            int src_bank_idx;
-            src_bank_idx = (i + data_offset_reg) & 4'hF;
-            rdata_aligned[127 - (i*8) -: 8] = data_bank_rdata[src_bank_idx];
-        end
-        
+        data_rdata = 32'h0;
         case (data_size_reg)
-            2'b00: data_rdata = {24'h0, rdata_aligned[127:120]};
-            2'b01: data_rdata = {16'h0, rdata_aligned[127:112]};
-            2'b10: data_rdata = rdata_aligned[127:96];
+            2'b00: begin // Byte
+                case (data_addr_low_reg)
+                    2'b00: data_rdata = {24'h0, data_rdata_comb[31:24]};
+                    2'b01: data_rdata = {24'h0, data_rdata_comb[23:16]};
+                    2'b10: data_rdata = {24'h0, data_rdata_comb[15:8]};
+                    2'b11: data_rdata = {24'h0, data_rdata_comb[7:0]};
+                endcase
+            end
+            2'b01: begin // Half
+                if (data_addr_low_reg[1] == 1'b0) data_rdata = {16'h0, data_rdata_comb[31:16]};
+                else                              data_rdata = {16'h0, data_rdata_comb[15:0]};
+            end
+            2'b10: begin // Word
+                data_rdata = data_rdata_comb;
+            end
             default: data_rdata = 32'h0;
         endcase
     end

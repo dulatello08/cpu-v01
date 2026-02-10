@@ -1,5 +1,9 @@
 # NeoCore16x32 Implementation Notes
 
+> [!TIP]
+> Docs Home: [DOCS_INDEX.md](DOCS_INDEX.md)
+
+
 ## Overview
 
 This document explains the design decisions, trade-offs, and rationale behind the NeoCore16x32 CPU implementation. It provides insight into why certain choices were made and documents alternative approaches that were considered.
@@ -263,17 +267,18 @@ end
 
 ## Pipeline Organization
 
-### 5-Stage Pipeline
+### 6-Stage Pipeline
 
-**Why 5 stages instead of 3, 7, or more?**
+**Why 6 stages instead of 3, 5, 7, or more?**
 
-1. **Classic RISC balance**: IF, ID, EX, MEM, WB are natural divisions
-2. **Timing**: Each stage ~8-9 ns at 100 MHz, achievable on FPGA
-3. **Hazard complexity**: More stages = more forwarding paths
-4. **Verification**: 5 stages well-understood, easy to verify
+1. **Frontend decoupling**: IB stage prevents fetch/issue misalignment without replay
+2. **Timing**: Each stage remains ~8-9 ns at 100 MHz, achievable on FPGA
+3. **Hazard complexity**: One extra stage, but forwarding paths unchanged
+4. **Verification**: IB queue is simple and deterministic
 
 **Stage Breakdown**:
 - **IF**: Instruction fetch (memory access latency)
+- **IB**: Instruction buffer (queue between fetch and decode)
 - **ID**: Decode + register read
 - **EX**: ALU/multiply/branch (arithmetic latency)
 - **MEM**: Data memory access (memory access latency)
@@ -632,7 +637,7 @@ The NeoCore16x32 design balances performance, complexity, and verifiability. Key
 2. **Variable-length** instructions for code density
 3. **Dual-issue** for performance without excessive complexity
 4. **Von Neumann** memory for simplicity
-5. **5-stage pipeline** for standard hazard handling
+5. **6-stage pipeline** with IB for hazard handling and frontend decoupling
 
 These choices result in a CPU that is:
 - FPGA-friendly (efficient BRAM usage, achievable timing)
@@ -641,4 +646,3 @@ These choices result in a CPU that is:
 - Extensible (room for future enhancements)
 
 The implementation successfully demonstrates a dual-issue processor suitable for embedded FPGA applications with performance competitive with commercial CPUs of similar complexity.
-

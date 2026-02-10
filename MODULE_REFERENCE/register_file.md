@@ -1,5 +1,9 @@
 # Register File Module Reference
 
+> [!TIP]
+> Module Index: [README.md](README.md) | Docs Home: [../DOCS_INDEX.md](../DOCS_INDEX.md)
+
+
 ## Overview
 The Register File provides 16 general-purpose 16-bit registers with multi-port read/write capability for dual-issue execution.
 

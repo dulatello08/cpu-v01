@@ -138,7 +138,7 @@ run_core_unified_tb: core_unified_tb
 core_any_tb: $(BUILD_DIR)
 	$(IVERILOG) $(IVFLAGS) -s core_any_tb \
 		-o $(BUILD_DIR)/core_any_tb.vvp \
-		$(RTL_SRCS) $(TB_DIR)/core_any_tb.sv
+		$(RTL_SRCS) $(TB_DIR)/core_any_tb.sv 2>&1 | grep -v "sorry"
 
 run_core_any_tb: core_any_tb
 	@if [ -z "$(PROGRAM)" ]; then \
@@ -151,7 +151,7 @@ run_core_any_tb: core_any_tb
 		exit 1; \
 	fi
 	@echo "Running program: $(PROGRAM)"
-	cd $(BUILD_DIR) && $(VVP) core_any_tb.vvp +PROGRAM=../$(PROGRAM) +DEBUG
+	cd $(BUILD_DIR) && $(VVP) core_any_tb.vvp +PROGRAM=../$(PROGRAM)
 
 # Shortcut: run_any with PROGRAM variable
 run_any: run_core_any_tb
@@ -257,7 +257,7 @@ core_top.json: build/*.v
 
 # Place and Route (Nextpnr)
 core_top.config: core_top.json ulx3s-85f-min.lpf
-	nextpnr-ecp5 --85k --package CABGA381 --json $< --lpf ulx3s-85f-min.lpf --textcfg $@ --threads 8
+	nextpnr-ecp5 --85k --package CABGA381 --json $< --lpf ulx3s-85f-min.lpf --textcfg $@ --threads 12
 
 # Bitstream Generation (Ecppack)
 core_top.bit: core_top.config

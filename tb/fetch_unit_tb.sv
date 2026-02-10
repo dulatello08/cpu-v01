@@ -11,7 +11,6 @@ module fetch_unit_tb;
   logic        rst;
   logic        branch_taken;
   logic [31:0] branch_target;
-  logic        stall;
   
   logic [31:0] mem_addr;
   logic        mem_req;
@@ -27,6 +26,9 @@ module fetch_unit_tb;
   logic [3:0]   inst_len_1;
   logic [31:0]  pc_1;
   logic         valid_1;
+  
+  // Feedback from IB stage (acceptance)
+  logic [1:0]   accept_count;
 
   // DUT Instantiation
   fetch_unit dut (
@@ -34,7 +36,6 @@ module fetch_unit_tb;
     .rst(rst),
     .branch_taken(branch_taken),
     .branch_target(branch_target),
-    .stall(stall),
     .mem_addr(mem_addr),
     .mem_req(mem_req),
     .mem_rdata(mem_rdata),
@@ -46,7 +47,8 @@ module fetch_unit_tb;
     .inst_data_1(inst_data_1),
     .inst_len_1(inst_len_1),
     .pc_1(pc_1),
-    .valid_1(valid_1)
+    .valid_1(valid_1),
+    .accept_count(accept_count)
   );
 
   // Clock Generation
@@ -88,6 +90,11 @@ module fetch_unit_tb;
     end
   end
 
+  // Accept everything the fetch unit presents (no IB capacity modeling here)
+  always_comb begin
+    accept_count = {1'b0, valid_0} + {1'b0, valid_1};
+  end
+
   always @(posedge clk) begin
     mem_ack <= 0;
     if (mem_req) begin
@@ -109,8 +116,7 @@ module fetch_unit_tb;
     rst = 1;
     branch_taken = 0;
     branch_target = 0;
-    stall = 0;
-    stall = 0;
+    accept_count = 2'd0;
     
     // Reset
     #20;
@@ -183,11 +189,18 @@ module fetch_unit_tb;
     @(posedge clk);
     while (!valid_0) @(posedge clk);
     
-    // Cycle 4: Should be at 0x22 (Dual issue of 1E and 20)
-    // Note: With unaligned fetch, we can dual issue across the 16-byte boundary!
+    // Cycle 4: With the registered fetch request stage, boundary dual-issue is
+    // delayed by one cycle, so we first observe PC=0x20.
     $display("Time %0t: Cycle 4. PC0=%h", $time, pc_0);
-    if (pc_0 == 32'h22) $display("PASS: Crossed 16-byte boundary to 0x22 (Dual Issue!)");
-    else $display("FAIL: Expected PC=22, got %h", pc_0);
+    if (pc_0 == 32'h20) $display("PASS: Boundary step reached PC=0x20");
+    else $display("FAIL: Expected PC=20, got %h", pc_0);
+
+    // Cycle 5: Now we should see the boundary-crossed dual-issue advancement.
+    @(posedge clk);
+    while (!valid_0) @(posedge clk);
+    $display("Time %0t: Cycle 5. PC0=%h", $time, pc_0);
+    if (pc_0 == 32'h24) $display("PASS: Boundary-crossed dual issue reached PC=0x24");
+    else $display("FAIL: Expected PC=24, got %h", pc_0);
     
     $finish;
   end

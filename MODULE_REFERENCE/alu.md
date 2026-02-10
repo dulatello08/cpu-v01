@@ -1,5 +1,9 @@
 # ALU Module Reference
 
+> [!TIP]
+> Module Index: [README.md](README.md) | Docs Home: [../DOCS_INDEX.md](../DOCS_INDEX.md)
+
+
 ## Overview
 The Arithmetic Logic Unit (ALU) performs 16-bit arithmetic and logic operations for the NeoCore16x32 CPU. It supports all ALU operations defined in the ISA and generates zero (Z) and overflow (V) flags.
 

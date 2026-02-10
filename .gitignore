@@ -6,3 +6,6 @@ core_top.json
 *.mem
 *.vcd
 cmake-build-debug
+AGENTS.md
+*.json
+*.config

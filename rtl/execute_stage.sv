@@ -165,81 +165,79 @@ module execute_stage
   );
   
   // ============================================================================
-  // Multiply Unit (Instruction 0)
+  // Multiply Unit (Shared)
   // ============================================================================
   
-  logic [15:0] mul_result_lo_0, mul_result_hi_0;
-  logic        is_signed_mul_0;
+  logic [15:0] mul_operand_a, mul_operand_b;
+  logic        mul_is_signed;
+  logic [15:0] mul_result_lo_shared, mul_result_hi_shared;
   
-  assign is_signed_mul_0 = (id_ex_0.opcode == OP_SMULL);
+  // Mux inputs: Priority to instruction 0
+  // If inst 0 is MUL, it uses the unit.
+  // Otherwise, inst 1 can use it (even if invalid/speculative).
+  always_comb begin
+    if (id_ex_0.itype == ITYPE_MUL) begin
+      mul_operand_a = operand_a_0;
+      mul_operand_b = operand_b_0;
+      mul_is_signed = (id_ex_0.opcode == OP_SMULL);
+    end else begin
+      mul_operand_a = operand_a_1;
+      mul_operand_b = operand_b_1;
+      mul_is_signed = (id_ex_1.opcode == OP_SMULL);
+    end
+  end
   
-  multiply_unit mul_0 (
+  multiply_unit mul_shared (
     .clk(clk),
     .rst(rst),
-    .operand_a(operand_a_0),
-    .operand_b(operand_b_0),
-    .is_signed(is_signed_mul_0),
-    .result_lo(mul_result_lo_0),
-    .result_hi(mul_result_hi_0)
+    .operand_a(mul_operand_a),
+    .operand_b(mul_operand_b),
+    .is_signed(mul_is_signed),
+    .result_lo(mul_result_lo_shared),
+    .result_hi(mul_result_hi_shared)
   );
   
   // ============================================================================
-  // Multiply Unit (Instruction 1)
+  // Branch Unit (Shared)
   // ============================================================================
   
-  logic [15:0] mul_result_lo_1, mul_result_hi_1;
-  logic        is_signed_mul_1;
+  opcode_e     branch_opcode;
+  logic [15:0] branch_operand_a, branch_operand_b;
+  logic [31:0] branch_tgt_in;
+  logic        branch_taken_shared;
+  logic [31:0] branch_pc_shared;
   
-  assign is_signed_mul_1 = (id_ex_1.opcode == OP_SMULL);
+  // Mux inputs: Priority to instruction 0
+  always_comb begin
+    if (id_ex_0.is_branch) begin
+      branch_opcode = id_ex_0.opcode;
+      branch_operand_a = operand_a_0;
+      branch_operand_b = operand_b_0;
+      branch_tgt_in = id_ex_0.immediate;
+    end else begin
+      branch_opcode = id_ex_1.opcode;
+      branch_operand_a = operand_a_1;
+      branch_operand_b = operand_b_1;
+      branch_tgt_in = id_ex_1.immediate;
+    end
+  end
   
-  multiply_unit mul_1 (
+  branch_unit branch_shared (
     .clk(clk),
     .rst(rst),
-    .operand_a(operand_a_1),
-    .operand_b(operand_b_1),
-    .is_signed(is_signed_mul_1),
-    .result_lo(mul_result_lo_1),
-    .result_hi(mul_result_hi_1)
-  );
-  
-  // ============================================================================
-  // Branch Unit (Instruction 0)
-  // ============================================================================
-  
-  logic        branch_taken_0;
-  logic [31:0] branch_pc_0;
-  
-  branch_unit branch_0 (
-    .clk(clk),
-    .rst(rst),
-    .opcode(id_ex_0.opcode),
-    .operand_a(operand_a_0),
-    .operand_b(operand_b_0),
+    .opcode(branch_opcode),
+    .operand_a(branch_operand_a),
+    .operand_b(branch_operand_b),
     .v_flag_in(v_flag),
-    .branch_target(id_ex_0.immediate),
-    .branch_taken(branch_taken_0),
-    .branch_pc(branch_pc_0)
+    .branch_target(branch_tgt_in),
+    .branch_taken(branch_taken_shared),
+    .branch_pc(branch_pc_shared)
   );
   
-  // ============================================================================
-  // Branch Unit (Instruction 1)
-  // ============================================================================
-  
-  logic        branch_taken_1;
-  logic [31:0] branch_pc_1;
-  
-  branch_unit branch_1 (
-    .clk(clk),
-    .rst(rst),
-    .opcode(id_ex_1.opcode),
-    .operand_a(operand_a_1),
-    .operand_b(operand_b_1),
-    .v_flag_in(v_flag),
-    .branch_target(id_ex_1.immediate),
-    .branch_taken(branch_taken_1),
-    .branch_pc(branch_pc_1)
-  );
-  
+  // Internal signals for testbench compatibility
+  logic branch_taken_0;
+  assign branch_taken_0 = branch_taken_shared && id_ex_0.is_branch;
+
   // ============================================================================
   // Result Selection and Output (Instruction 0)
   // ============================================================================
@@ -255,18 +253,16 @@ module execute_stage
     ex_mem_0.mem_write = id_ex_0.mem_write;
     ex_mem_0.mem_size = id_ex_0.mem_size;
     ex_mem_0.is_halt = id_ex_0.is_halt;
+    ex_mem_0.mov_byte_hi = id_ex_0.mov_byte_hi;
     
     // Select result based on instruction type
     if (id_ex_0.itype == ITYPE_MUL) begin
-      ex_mem_0.alu_result = {16'h0, mul_result_lo_0};
-      // Store high result for rd2
+      // Since id_ex_0 is MUL, the shared unit contains its result
+      ex_mem_0.alu_result = {16'h0, mul_result_lo_shared};
     end else if (id_ex_0.itype == ITYPE_MOV) begin
-      // MOV instruction: use immediate value for all modes except register-to-register
       if (id_ex_0.specifier == 8'h02) begin
-        // Specifier 0x02: register to register, pass through operand
         ex_mem_0.alu_result = {16'h0, operand_a_0};
       end else begin
-        // Specifier 0x00, 0x01, etc.: use immediate value
         ex_mem_0.alu_result = id_ex_0.immediate;
       end
     end else begin
@@ -279,29 +275,16 @@ module execute_stage
     
     // Memory address calculation
     if (id_ex_0.mem_read || id_ex_0.mem_write) begin
-      // Determine address based on specifier
       if (id_ex_0.itype == ITYPE_MOV) begin
         if (id_ex_0.specifier >= 8'h0B && id_ex_0.specifier <= 8'h12) begin
-          // Offset addressing: [rn + offset]
-          // Base address is in operand_a (rn), offset is in immediate
           ex_mem_0.mem_addr = operand_a_0 + id_ex_0.immediate;
         end else begin
-          // Absolute addressing or register indirect (handled as absolute if address passed)
-          // For [addr], address is in mem_addr
           ex_mem_0.mem_addr = id_ex_0.mem_addr;
         end
       end else if (id_ex_0.itype == ITYPE_ALU && id_ex_0.specifier == 8'h02) begin
-        // ALU memory operand: [addr]
         ex_mem_0.mem_addr = id_ex_0.mem_addr;
       end else if (id_ex_0.itype == ITYPE_STACK) begin
-         // Stack operations use SP (R14) - implicit
-         // This would need R14 read and update, but for now assuming simplified model
-         // or that decode maps SP to a register operand.
-         // Current decode maps PSH/POP to use register operands, but address?
-         // PSH: mem_write, mem_size=HALF. Address should be SP.
-         // POP: mem_read, mem_size=HALF. Address should be SP.
-         // If not fully implemented, we'll leave as is or assume operand_a has address
-         ex_mem_0.mem_addr = operand_a_0; // Placeholder for stack ops
+         ex_mem_0.mem_addr = operand_a_0;
       end else begin
         ex_mem_0.mem_addr = id_ex_0.mem_addr;
       end
@@ -309,12 +292,18 @@ module execute_stage
       ex_mem_0.mem_addr = 32'h0;
     end
     
-    // Memory write data
-    ex_mem_0.mem_wdata = operand_a_0;
+    // For MOV byte loads, operand_b_0 carries the old destination halfword so MEM can merge the byte.
+    // For stores, operand_a_0 is the store data.
+    if (id_ex_0.mem_read && id_ex_0.mem_size == MEM_BYTE) begin
+      ex_mem_0.mem_wdata = operand_b_0;
+    end else begin
+      ex_mem_0.mem_wdata = operand_a_0;
+    end
     
     // Branch information
-    ex_mem_0.branch_taken = id_ex_0.is_branch && branch_taken_0;
-    ex_mem_0.branch_target = branch_pc_0;
+    // If id_ex_0 is branch, shared unit result is for us
+    ex_mem_0.branch_taken = id_ex_0.is_branch && branch_taken_shared;
+    ex_mem_0.branch_target = branch_pc_shared;
   end
   
   // ============================================================================
@@ -332,16 +321,19 @@ module execute_stage
     ex_mem_1.mem_write = id_ex_1.mem_write;
     ex_mem_1.mem_size = id_ex_1.mem_size;
     ex_mem_1.is_halt = id_ex_1.is_halt;
+    ex_mem_1.mov_byte_hi = id_ex_1.mov_byte_hi;
     
     if (id_ex_1.itype == ITYPE_MUL) begin
-      ex_mem_1.alu_result = {16'h0, mul_result_lo_1};
+      // If id_ex_1 is MUL, check if id_ex_0 was MUL.
+      // If id_ex_0 was MUL, then shared result is for slot 0. Slot 1 gets garbage (but is invalid).
+      // If id_ex_0 was NOT MUL, then shared result is for slot 1.
+      // Note: Issue unit prevents dual MULs. So if id_ex_1 is MUL (valid or not), id_ex_0 is NOT MUL.
+      // So assuming correct issue/decode logic, shared unit has our result.
+      ex_mem_1.alu_result = {16'h0, mul_result_lo_shared};
     end else if (id_ex_1.itype == ITYPE_MOV) begin
-      // MOV instruction: use immediate value for all modes except register-to-register
       if (id_ex_1.specifier == 8'h02) begin
-        // Specifier 0x02: register to register, pass through operand
         ex_mem_1.alu_result = {16'h0, operand_a_1};
       end else begin
-        // Specifier 0x00, 0x01, etc.: use immediate value
         ex_mem_1.alu_result = id_ex_1.immediate;
       end
     end else begin
@@ -352,17 +344,13 @@ module execute_stage
     ex_mem_1.v_flag = alu_v_1;
     
     if (id_ex_1.mem_read || id_ex_1.mem_write) begin
-      // Determine address based on specifier
       if (id_ex_1.itype == ITYPE_MOV) begin
         if (id_ex_1.specifier >= 8'h0B && id_ex_1.specifier <= 8'h12) begin
-          // Offset addressing: [rn + offset]
           ex_mem_1.mem_addr = operand_a_1 + id_ex_1.immediate;
         end else begin
-          // Absolute addressing
           ex_mem_1.mem_addr = id_ex_1.mem_addr;
         end
       end else if (id_ex_1.itype == ITYPE_ALU && id_ex_1.specifier == 8'h02) begin
-        // ALU memory operand: [addr]
         ex_mem_1.mem_addr = id_ex_1.mem_addr;
       end else begin
         ex_mem_1.mem_addr = id_ex_1.mem_addr;
@@ -371,9 +359,21 @@ module execute_stage
       ex_mem_1.mem_addr = 32'h0;
     end
     
-    ex_mem_1.mem_wdata = operand_a_1;
-    ex_mem_1.branch_taken = id_ex_1.is_branch && branch_taken_1;
-    ex_mem_1.branch_target = branch_pc_1;
+    if (id_ex_1.mem_read && id_ex_1.mem_size == MEM_BYTE) begin
+      ex_mem_1.mem_wdata = operand_b_1;
+    end else begin
+      ex_mem_1.mem_wdata = operand_a_1;
+    end
+    
+    // Branch information
+    // We only use the shared branch unit if id_ex_0 was NOT a branch.
+    // If id_ex_0 was a branch, then ex_mem_1.branch_taken must be 0 (because shared unit was busy with slot 0)
+    // Note: Issue unit prevents dual branches, so if id_ex_1 is branch, id_ex_0 is NOT branch? 
+    // Wait, earlier we said if id_ex_0 is branch, id_ex_1 is invalid branch.
+    // If id_ex_0 is branch, shared unit does slot 0. Slot 1 cannot take branch.
+    // So ex_mem_1.branch_taken is only true if id_ex_1 is branch AND id_ex_0 is NOT branch.
+    ex_mem_1.branch_taken = (!id_ex_0.is_branch && id_ex_1.is_branch) && branch_taken_shared;
+    ex_mem_1.branch_target = branch_pc_shared;
   end
   
   // ============================================================================
@@ -386,6 +386,7 @@ module execute_stage
       branch_taken = 1'b1;
       branch_target = ex_mem_0.branch_target;
     end else if (ex_mem_1.branch_taken) begin
+      // This path is taken for speculative slot 1 branches (when valid=0 but branch_taken=1)
       branch_taken = 1'b1;
       branch_target = ex_mem_1.branch_target;
     end else begin

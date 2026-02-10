@@ -1,5 +1,9 @@
 # NeoCore16x32 Microarchitecture
 
+> [!TIP]
+> Docs Home: [DOCS_INDEX.md](DOCS_INDEX.md)
+
+
 ## Introduction
 
 This document provides detailed information about the internal microarchitectural implementation of the NeoCore16x32 CPU. It describes how the architectural specification is realized in hardware RTL modules.
@@ -9,6 +13,7 @@ This document provides detailed information about the internal microarchitectura
 ```
 core_top
 ├── fetch_unit
+├── IB queue (in cpu_core)
 ├── decode_unit (x2 for dual-issue)
 ├── issue_unit
 ├── register_file
@@ -21,7 +26,6 @@ core_top
 ├── writeback_stage
 ├── unified_memory
 └── pipeline_regs
-    ├── if_id_reg (x2)
     ├── id_ex_reg (x2)
     ├── ex_mem_reg (x2)
     └── mem_wb_reg (x2)
@@ -103,14 +107,14 @@ assign stall_pipeline = hazard_stall ||  // Data hazard
 **Branch Handling**:
 - Branch resolution in EX stage
 - `branch_taken` signal from execute_stage
-- Flush IF and ID stages when branch taken
+- Flush IB queue and ID/EX when branch taken
 - Redirect PC to branch_target
 
 ### Datapath Connections
 
 **Fetch to Decode**:
-- Two IF/ID pipeline registers (inst_0 and inst_1)
-- Valid bits control which instructions proceed
+- IB queue (6 entries) buffers fetched instructions
+- Up to two instructions per cycle provided to decode
 
 **Decode to Execute**:
 - Register file provides 4 read ports
@@ -170,89 +174,49 @@ Fetch variable-length instructions from unified memory and prepare them for deco
 
 ### Buffer Management
 
-**Circular Buffer**:
+The fetch unit maintains a **two‑block window**:
+
 ```verilog
-logic [255:0] fetch_buffer;  // 32 bytes, big-endian
-logic [5:0]   buffer_valid;  // Number of valid bytes (0-32)
-logic [31:0]  buffer_pc;     // PC of first byte in buffer
+logic [127:0] buf_hi;        // 16 bytes at buf_base_addr
+logic [127:0] buf_lo;        // Next 16 bytes (buf_base_addr + 16)
+logic         buf_hi_valid;
+logic         buf_lo_valid;
+logic [31:0]  buf_base_addr; // 16‑byte aligned
+logic [31:0]  current_pc;    // Byte address
 ```
 
-**Buffer Operations**:
-
-*Refill*:
-```verilog
-if (mem_ack) begin
-  fetch_buffer <= (fetch_buffer << 128) | {128'h0, mem_rdata};
-  buffer_valid <= buffer_valid + 6'd16;
-end
-```
-
-*Consume*:
-```verilog
-if (!stall && can_consume) begin
-  fetch_buffer <= fetch_buffer << (consumed_bytes * 8);
-  buffer_valid <= buffer_valid - consumed_bytes;
-  buffer_pc <= buffer_pc + {26'h0, consumed_bytes};
-end
-```
+When `current_pc` crosses a 16‑byte boundary, `buf_lo` shifts into `buf_hi` and
+`buf_lo` is refilled.
 
 ### Instruction Extraction
 
-**First Instruction**:
-```verilog
-inst_data_0 = fetch_buffer[255:184];  // Top 9 bytes (with padding to 72 bits)
-spec_0 = fetch_buffer[255:248];       // Specifier
-op_0 = fetch_buffer[247:240];         // Opcode
-inst_len_0 = get_inst_length(op_0, spec_0);
-valid_0 = (buffer_valid >= inst_len_0) && (inst_len_0 > 0);
-pc_0 = buffer_pc;
-```
-
-**Second Instruction**:
-- Offset by inst_len_0 bytes from start of buffer
-- Use case statement to extract based on inst_len_0
-- Calculate inst_len_1 similarly
-- Valid only if buffer has enough bytes for both
+The unit extracts up to two instructions from `{buf_hi, buf_lo}`. Instruction
+lengths are decoded from specifier/opcode and are **valid only when the required
+bytes are present** (HI/LO valid).
 
 ### PC Management
 
-**PC Update**:
+PC advances **only when the IB accepts instructions**:
+
 ```verilog
 if (branch_taken)
   pc_next = branch_target;
-else if (!stall)
-  pc_next = pc + {26'h0, consumed_bytes};
+else if (accept_count != 0)
+  pc_next = pc + accept_len;
 else
-  pc_next = pc;  // Hold during stall
-```
-
-**Consumed Bytes Calculation**:
-```verilog
-consumed_bytes = (can_consume_0 ? inst_len_0 : 0) +
-                 (can_consume_1 ? inst_len_1 : 0);
+  pc_next = pc;  // Hold
 ```
 
 ### Memory Interface
 
-**Request Generation**:
-```verilog
-mem_req = (buffer_valid < 6'd20) && !stall && !branch_taken;
-mem_addr = pc;
-```
-
-**Big-Endian Receive**:
-```verilog
-if_rdata[127:120] = mem[if_addr + 0];  // MSB
-if_rdata[119:112] = mem[if_addr + 1];
-...
-if_rdata[7:0] = mem[if_addr + 15];     // LSB
-```
+Memory requests are generated to keep `buf_hi` and `buf_lo` filled. Pending LO
+prefetches are tracked to avoid mis‑routing on block shifts.
 
 ### Timing
 
-- **Fetch Latency**: 1 cycle (memory read)
-- **Throughput**: Up to 2 instructions per cycle (if both fit in buffer)
-- **Typical**: ~1.5 instructions per cycle average
+- **Fetch Request Path**: Registered at fetch output (adds one frontend control cycle)
+- **Fetch Latency**: 1 cycle from `mem_req` to `mem_ack` (memory read path)
+- **Throughput**: Up to 2 instructions per cycle (if both fit and accepted)
 
 ---
 
@@ -875,7 +839,7 @@ end
 
 ### Pipeline Register Types
 
-1. **if_id_reg**: Holds fetched instructions (if_id_t)
+1. **IB queue**: Holds fetched instructions (6-entry queue of if_id_t)
 2. **id_ex_reg**: Holds decoded control and operands (id_ex_t)
 3. **ex_mem_reg**: Holds execution results (ex_mem_t)
 4. **mem_wb_reg**: Holds memory/ALU results (mem_wb_t)
@@ -890,7 +854,7 @@ end
 
 ## Summary
 
-The NeoCore16x32 microarchitecture implements a dual-issue, 5-stage pipeline with:
+The NeoCore16x32 microarchitecture implements a dual-issue, 6-stage pipeline with:
 
 1. **Modular Design**: Clear separation of pipeline stages
 2. **Comprehensive Forwarding**: Minimize stalls with multi-source forwarding
@@ -899,4 +863,3 @@ The NeoCore16x32 microarchitecture implements a dual-issue, 5-stage pipeline wit
 5. **FPGA-Optimized**: Uses BRAM efficiently, achieves timing goals
 
 All modules are synthesizable and verified through comprehensive testbenches. The design balances performance (dual-issue) with complexity (in-order pipeline, no speculation beyond branches).
-

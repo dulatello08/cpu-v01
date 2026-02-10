@@ -2,7 +2,7 @@
 // pipeline_regs.sv
 // NeoCore 16x32 CPU - Pipeline Stage Registers
 //
-// Contains all pipeline registers for the 5-stage pipeline.
+// Contains all pipeline registers for the 6-stage pipeline (IB is in cpu_core).
 // Each register has enable/stall capability and flush capability.
 //
 
@@ -55,6 +55,7 @@ module id_ex_reg
       data_out.rs1_data <= 16'h0;
       data_out.rs2_data <= 16'h0;
       data_out.immediate <= 32'h0;
+      data_out.mov_byte_hi <= 1'b0;
       data_out.rd_addr <= 4'h0;
       data_out.rd2_addr <= 4'h0;
       data_out.rd_we <= 1'b0;
@@ -100,6 +101,7 @@ module ex_mem_reg
       data_out.mem_size <= MEM_HALF;
       data_out.mem_addr <= 32'h0;
       data_out.mem_wdata <= 16'h0;
+      data_out.mov_byte_hi <= 1'b0;
       data_out.branch_taken <= 1'b0;
       data_out.branch_target <= 32'h0;
       data_out.is_halt <= 1'b0;

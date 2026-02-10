@@ -1,5 +1,9 @@
 # Microarchitecture Optimization Guide: Path to 50 MHz
 
+> [!TIP]
+> Docs Home: [DOCS_INDEX.md](DOCS_INDEX.md)
+
+
 **Target Frequency:** 50 MHz  
 **Current Baseline:** ~25 MHz (Passing with 0.14ns margin)  
 **Architecture:** NeoCore 16x32 (16-bit Data, 32-bit Address, Variable Length ISA, Dual-Issue)
@@ -8,7 +12,7 @@
 
 ## Part 1: Optimization Without Pipeline Stages (70% Focus)
 
-Achieving a 100% frequency increase (25 MHz -> 50 MHz) without adding pipeline stages requires a relentless focus on reducing combinatorial path delays. In a 5-stage CPU like NeoCore, the critical path is almost always defined by the feedback loops in the Fetch stage (Next PC calculation) or the Hazard/Forwarding logic in the Execute stage. 
+Achieving a 100% frequency increase (25 MHz -> 50 MHz) without adding pipeline stages requires a relentless focus on reducing combinatorial path delays. In a 6-stage CPU like NeoCore, the critical path is almost always defined by the feedback loops in the Fetch stage (Next PC calculation) or the Hazard/Forwarding logic in the Execute stage. 
 
 The following sections detail specific, actionable optimization strategies categorized by module.
 
@@ -158,7 +162,7 @@ To hit 50-100 MHz comfortably:
 For the target of 50 MHz, the full 8-stage pipeline is overkill and introduces too much complexity (hazards, flushing logic).
 
 **Recommended Path:**
-1.  **Stay with 5 stages.**
+1.  **Stay with 6 stages.**
 2.  **Implement the "Pseudo-Parallel" Fetch optimizations** (Part 1.2 and 1.3).
 3.  **Harden the BRAM Macros** (Part 2.1) to ensure dedicated ports.
 4.  **Rewrite Hazard Logic** to use bit-vectors (Part 4.1).

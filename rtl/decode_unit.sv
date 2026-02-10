@@ -47,6 +47,7 @@ module decode_unit
   output logic [31:0]  immediate,
   output logic [31:0]  mem_addr,
   output logic [31:0]  branch_target,
+  output logic         mov_byte_hi,
   
   // Control signals
   output logic         rd_we,        // Destination register write enable
@@ -105,6 +106,7 @@ module decode_unit
     rs2_addr = 4'h0;
     rd_addr = 4'h0;
     rd2_addr = 4'h0;
+    mov_byte_hi = byte2[7];
     
     case (opcode_int)
       OP_ADD, OP_SUB, OP_MUL, OP_AND, OP_OR, OP_XOR, OP_LSH, OP_RSH: begin
@@ -138,8 +140,12 @@ module decode_unit
             rs1_addr = 4'h0;
             rs2_addr = 4'h0;
           end
-          8'h01: begin  // mov rd, rn, label
-            rs1_addr = byte3[3:0];  // rn
+          8'h01: begin  // mov rd, rn, label (32-bit immediate)
+            // ISA: rd gets upper 16, rn gets lower 16.
+            // Pipeline convention: rd_addr = lower, rd2_addr = upper.
+            rd_addr = byte3[3:0];   // rn (lower 16)
+            rd2_addr = byte2[3:0];  // rd (upper 16)
+            rs1_addr = 4'h0;
             rs2_addr = 4'h0;
           end
           8'h02: begin  // mov rd, rn
@@ -148,11 +154,15 @@ module decode_unit
           end
           8'h03, 8'h04, 8'h05: begin  // mov rd.L/H, [addr] or mov rd, [addr]
             rs1_addr = 4'h0;  // Load from memory
-            rs2_addr = 4'h0;
+            // For byte loads (rd.L/rd.H), preserve the other byte by carrying old rd in rs2.
+            rs2_addr = (specifier == 8'h03 || specifier == 8'h04) ? byte2[3:0] : 4'h0;
           end
-          8'h06: begin  // mov rd, rn1, [addr]
-            rs1_addr = byte3[3:0];  // rn1
-            rd2_addr = byte3[3:0];  // rn1 also destination
+          8'h06: begin  // mov rd, rn1, [addr] (32-bit load)
+            // ISA: rd gets upper 16, rn1 gets lower 16.
+            rd_addr = byte3[3:0];   // rn1 (lower 16)
+            rd2_addr = byte2[3:0];  // rd (upper 16)
+            rs1_addr = 4'h0;
+            rs2_addr = 4'h0;
           end
           8'h07, 8'h08, 8'h09: begin  // mov [addr], rd.L/H or rd
             rs1_addr = byte2[3:0];  // rd to store
@@ -166,11 +176,12 @@ module decode_unit
           end
           8'h0B, 8'h0C, 8'h0D: begin  // mov rd.L/H, [rn + offset] or rd
             rs1_addr = byte3[3:0];  // rn (base address)
-            rs2_addr = 4'h0;
+            rs2_addr = (specifier == 8'h0B || specifier == 8'h0C) ? byte2[3:0] : 4'h0;
           end
-          8'h0E: begin  // mov rd, rd1, [rn + offset]
-            rs1_addr = byte4[3:0];  // rn
-            rd2_addr = byte3[3:0];  // rd1
+          8'h0E: begin  // mov rd, rd1, [rn + offset] (32-bit load)
+            rs1_addr = byte4[3:0];  // rn (base)
+            rd_addr = byte3[3:0];   // rd1 (lower 16)
+            rd2_addr = byte2[3:0];  // rd (upper 16)
           end
           8'h0F, 8'h10, 8'h11: begin  // mov [rn + offset], rd.L/H or rd
             rs1_addr = byte2[3:0];  // rd (data to store)
@@ -254,7 +265,7 @@ module decode_unit
             immediate = {16'h0, byte3, byte4};
           end
           8'h01: begin  // mov rd, rn, label (32-bit address)
-            branch_target = {byte4, byte5, byte6, byte7};
+            immediate = {byte4, byte5, byte6, byte7};
           end
           8'h03, 8'h04, 8'h05, 8'h07, 8'h08, 8'h09: begin  // [normAddressing]
             mem_addr = {byte3, byte4, byte5, byte6};
@@ -275,6 +286,7 @@ module decode_unit
       OP_B, OP_JSR: begin
         // Unconditional branch/jump (32-bit address)
         branch_target = {byte2, byte3, byte4, byte5};
+        immediate = branch_target;
       end
       
       OP_BE, OP_BNE, OP_BLT, OP_BGT, OP_BRO: begin
@@ -286,6 +298,7 @@ module decode_unit
           // Other branches have rd, rn, label
           branch_target = {byte4, byte5, byte6, byte7};
         end
+        immediate = branch_target;
       end
       
       default: begin
@@ -326,8 +339,12 @@ module decode_unit
         
         OP_MOV: begin
           case (specifier)
-            8'h00, 8'h01, 8'h02: begin  // Register moves
+            8'h00, 8'h02: begin  // Register moves
               rd_we = 1'b1;
+            end
+            8'h01: begin  // mov rd, rn, label (32-bit immediate)
+              rd_we = 1'b1;
+              rd2_we = 1'b1;
             end
             8'h03: begin  // mov rd.L, [addr] - byte load
               rd_we = 1'b1;
@@ -339,10 +356,15 @@ module decode_unit
               mem_read = 1'b1;
               mem_size = MEM_BYTE;
             end
-            8'h05, 8'h0B, 8'h0C, 8'h0D: begin  // mov rd, [addr] - halfword load
+            8'h05, 8'h0D: begin  // mov rd, [addr] - halfword load
               rd_we = 1'b1;
               mem_read = 1'b1;
               mem_size = MEM_HALF;
+            end
+            8'h0B, 8'h0C: begin  // mov rd.L/H, [rn + offset] - byte load
+              rd_we = 1'b1;
+              mem_read = 1'b1;
+              mem_size = MEM_BYTE;
             end
             8'h06, 8'h0E: begin  // Two-register load
               rd_we = 1'b1;
@@ -358,9 +380,13 @@ module decode_unit
               mem_write = 1'b1;
               mem_size = MEM_BYTE;
             end
-            8'h09, 8'h0F, 8'h10, 8'h11: begin  // mov [addr], rd - halfword store
+            8'h09, 8'h11: begin  // mov [addr], rd - halfword store
               mem_write = 1'b1;
               mem_size = MEM_HALF;
+            end
+            8'h0F, 8'h10: begin  // mov [rn + offset], rd.L/H - byte store
+              mem_write = 1'b1;
+              mem_size = MEM_BYTE;
             end
             8'h0A, 8'h12: begin  // Two-register store
               mem_write = 1'b1;

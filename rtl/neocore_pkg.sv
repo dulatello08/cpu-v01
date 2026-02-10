@@ -94,7 +94,7 @@ package neocore_pkg;
   // Pipeline Stage Structures
   // ============================================================================
   
-  // Instruction Fetch to Decode (IF/ID) Pipeline Register
+  // Instruction Buffer (IB) Entry
   typedef struct packed {
     logic        valid;           // Instruction valid
     logic [31:0] pc;              // Program counter for this instruction
@@ -117,6 +117,7 @@ package neocore_pkg;
     logic [15:0] rs1_data;        // Source register 1 data
     logic [15:0] rs2_data;        // Source register 2 data
     logic [31:0] immediate;       // Immediate value (if any)
+    logic        mov_byte_hi;     // MOV byte op targets high byte (bit7 in reg field)
     
     // Destination
     logic [3:0]  rd_addr;         // Destination register address
@@ -143,7 +144,7 @@ package neocore_pkg;
   typedef struct packed {
     logic        valid;           // Instruction valid
     logic [31:0] pc;              // Program counter
-    
+
     // ALU result
     logic [31:0] alu_result;      // ALU output (may be 32-bit for address calc)
     logic        z_flag;          // Zero flag from ALU
@@ -161,6 +162,7 @@ package neocore_pkg;
     mem_size_e   mem_size;        // Memory access size
     logic [31:0] mem_addr;        // Memory address
     logic [15:0] mem_wdata;       // Memory write data
+    logic        mov_byte_hi;     // MOV byte op targets high byte
     
     // Branch/control
     logic        branch_taken;    // Branch was taken

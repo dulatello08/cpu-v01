@@ -1,5 +1,9 @@
 # Pipeline Registers Module Reference
 
+> [!TIP]
+> Module Index: [README.md](README.md) | Docs Home: [../DOCS_INDEX.md](../DOCS_INDEX.md)
+
+
 ## Overview
 Pipeline registers hold data between pipeline stages and implement stall and flush functionality.
 

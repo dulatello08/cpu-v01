@@ -126,19 +126,47 @@ module core_any_tb;
   // Detailed cycle-by-cycle logging
   always @(posedge clk) begin
     if (debug_enabled && !rst) begin
-      $display("Cycle %0d: PC=%h (FetchPC0=%h) Halt=%b State=%d Spec0=%h Op0=%h Len0=%0d Spec1=%h Op1=%h Len1=%0d", 
-               cycle_count, dut.current_pc, dut.fetch_pc_0, dut.halted,
-               dut.fetch.state,
-               dut.fetch.spec_0, dut.fetch.op_0, dut.fetch.inst_len_0,
-               dut.fetch.spec_1, dut.fetch.op_1, dut.fetch.inst_len_1);
-      $display("         Consumed=%0d CurrentPC=%h Valid0=%b Valid1=%b DualIssue=%b (from issue=%b) MemReq=%b MemAddr=%h",
-               dut.fetch.consumed_count, dut.fetch.current_pc,
-               dut.fetch.valid_0, dut.fetch.valid_1, dut.dual_issue,
+      $display("Cycle %0d: PC=%h (FetchPC0=%h) Halt=%b State=%d", 
+               cycle_count, dut.current_pc, dut.fetch_pc_0, dut.halted, dut.fetch.state);
+      
+      $display("         Inst0: Raw=%h Len=%0d Valid=%b", 
+               dut.fetch.inst_data_0[71:8], dut.fetch.inst_len_0, dut.fetch.valid_0);
+      $display("         Inst1: Raw=%h Len=%0d Valid=%b", 
+               dut.fetch.inst_data_1[71:8], dut.fetch.inst_len_1, dut.fetch.valid_1);
+               
+      $display("         Fetch: Spec0=%h Op0=%h | Spec1=%h Op1=%h",
+               dut.fetch.spec_0, dut.fetch.op_0, dut.fetch.spec_1, dut.fetch.op_1);
+
+      $display("         Accept=%0d CurrentPC=%h DualIssue=%b (from issue=%b) MemReq=%b MemAddr=%h",
+               dut.accept_count, dut.fetch.current_pc, dut.dual_issue,
                dut.issue.dual_issue,
                dut.fetch.mem_req, dut.fetch.mem_addr);
-      $display("         Block[0-3]=%02h %02h %02h %02h", 
+               
+      $display("         Buffer Base=%h HI_Valid=%b LO_Valid=%b", 
+               dut.fetch.buf_base_addr, dut.fetch.buf_hi_valid, dut.fetch.buf_lo_valid);
+      $display("         Buffer[255:192] = %h", dut.fetch.buffer[255:192]);
+
+               
+      $display("         Block[0-3] (Byte 0 at MSB)=%02h %02h %02h %02h ... %02h %02h %02h %02h", 
                dut.fetch.current_block[0], dut.fetch.current_block[1],
-               dut.fetch.current_block[2], dut.fetch.current_block[3]);
+               dut.fetch.current_block[2], dut.fetch.current_block[3],
+               dut.fetch.current_block[12], dut.fetch.current_block[13],
+               dut.fetch.current_block[14], dut.fetch.current_block[15]);
+
+      $display("         Pipeline: Stall=%b FlushID=%b IB0_Valid=%b Dec0_Valid=%b Is0=%b Is1=%b",
+               dut.stall_pipeline, dut.flush_id, 
+               dut.ib_out_0.valid, dut.decode_valid_0,
+               dut.issue_inst0, dut.issue_inst1);
+      $display("         Decode: We0=%b Rd0=%h | Rs1_1=%h Rs2_1=%h",
+               dut.decode_0.rd_we, dut.decode_0.rd_addr,
+               dut.decode_1.rs1_addr, dut.decode_1.rs2_addr);
+      $display("         Branch0: Taken=%b OpA=%h OpB=%h",
+               dut.execute.branch_taken_0,
+               dut.execute.operand_a_0, dut.execute.operand_b_0);
+      $display("         IB_Len: L0=%d L1=%d | Accept=%d", 
+               dut.ib_out_0.inst_len, dut.ib_out_1.inst_len,
+               dut.accept_count);
+
     end
   end
   
@@ -190,6 +218,7 @@ module core_any_tb;
     bytes_loaded = 0;
     while (!$feof(fd)) begin
       if ($fscanf(fd, "%h", byte_val) == 1) begin
+        if (addr < 16) $display("DEBUG: Loading byte %h at addr %h", byte_val[7:0], addr);
         write_byte(addr, byte_val[7:0]);
         addr = addr + 1;
         bytes_loaded = bytes_loaded + 1;
@@ -198,6 +227,12 @@ module core_any_tb;
     $fclose(fd);
     
     $display("Loaded %0d bytes from %s", bytes_loaded, program_file);
+    
+    // Debug verify read-back
+    $display("Verifying memory content at start:");
+    for (int i = 0; i < 32; i++) begin
+       $display("Addr %0d: %h", i, read_byte(i));
+    end
     $display("Starting execution...\n");
     
     // Run until halt or timeout
@@ -225,7 +260,7 @@ module core_any_tb;
         $finish;
       end
       begin
-        repeat(100000) @(posedge clk);
+        repeat(300000) @(posedge clk);
         $display("\n========================================");
         $display("ERROR: Test timeout after %0d cycles", cycle_count);
         $display("PC = 0x%08h, Halted = %b", current_pc, halted);
@@ -246,60 +281,40 @@ module core_any_tb;
 
   // Helper task to write a byte to unified memory
   task write_byte(input [31:0] addr, input [7:0] data);
-    logic [3:0] bank_sel;
-    logic [31:0] bank_addr;
+    logic [1:0] bank_sel;
+    logic [31:0] row_addr;
+    logic [1:0] byte_sel;
     begin
-      bank_sel = addr[3:0];
-      bank_addr = addr[31:4]; // addr / 16
+      bank_sel = addr[3:2];
+      row_addr = addr[31:4]; // 16-byte aligned rows
+      byte_sel = addr[1:0];  // Byte within 32-bit word
       
       // Access the specific bank's memory array using hierarchical reference
+      // Banks are 32-bit wide. Big Endian: Byte 0 is [31:24], Byte 3 is [7:0].
       case (bank_sel)
-        4'h0: memory.bank_gen[0].mem[bank_addr] = data;
-        4'h1: memory.bank_gen[1].mem[bank_addr] = data;
-        4'h2: memory.bank_gen[2].mem[bank_addr] = data;
-        4'h3: memory.bank_gen[3].mem[bank_addr] = data;
-        4'h4: memory.bank_gen[4].mem[bank_addr] = data;
-        4'h5: memory.bank_gen[5].mem[bank_addr] = data;
-        4'h6: memory.bank_gen[6].mem[bank_addr] = data;
-        4'h7: memory.bank_gen[7].mem[bank_addr] = data;
-        4'h8: memory.bank_gen[8].mem[bank_addr] = data;
-        4'h9: memory.bank_gen[9].mem[bank_addr] = data;
-        4'hA: memory.bank_gen[10].mem[bank_addr] = data;
-        4'hB: memory.bank_gen[11].mem[bank_addr] = data;
-        4'hC: memory.bank_gen[12].mem[bank_addr] = data;
-        4'hD: memory.bank_gen[13].mem[bank_addr] = data;
-        4'hE: memory.bank_gen[14].mem[bank_addr] = data;
-        4'hF: memory.bank_gen[15].mem[bank_addr] = data;
+        2'b00: memory.bank_gen[0].mem[row_addr][8*(3-byte_sel) +: 8] = data;
+        2'b01: memory.bank_gen[1].mem[row_addr][8*(3-byte_sel) +: 8] = data;
+        2'b10: memory.bank_gen[2].mem[row_addr][8*(3-byte_sel) +: 8] = data;
+        2'b11: memory.bank_gen[3].mem[row_addr][8*(3-byte_sel) +: 8] = data;
       endcase
     end
   endtask
 
   // Helper function to read a byte from unified memory (for debug)
   function logic [7:0] read_byte(input [31:0] addr);
-    logic [3:0] bank_sel;
-    logic [31:0] bank_addr;
+    logic [1:0] bank_sel;
+    logic [31:0] row_addr;
+    logic [1:0] byte_sel;
     begin
-      bank_sel = addr[3:0];
-      bank_addr = addr[31:4];
+      bank_sel = addr[3:2];
+      row_addr = addr[31:4];
+      byte_sel = addr[1:0];
       
       case (bank_sel)
-        4'h0: return memory.bank_gen[0].mem[bank_addr];
-        4'h1: return memory.bank_gen[1].mem[bank_addr];
-        4'h2: return memory.bank_gen[2].mem[bank_addr];
-        4'h3: return memory.bank_gen[3].mem[bank_addr];
-        4'h4: return memory.bank_gen[4].mem[bank_addr];
-        4'h5: return memory.bank_gen[5].mem[bank_addr];
-        4'h6: return memory.bank_gen[6].mem[bank_addr];
-        4'h7: return memory.bank_gen[7].mem[bank_addr];
-        4'h8: return memory.bank_gen[8].mem[bank_addr];
-        4'h9: return memory.bank_gen[9].mem[bank_addr];
-        4'hA: return memory.bank_gen[10].mem[bank_addr];
-        4'hB: return memory.bank_gen[11].mem[bank_addr];
-        4'hC: return memory.bank_gen[12].mem[bank_addr];
-        4'hD: return memory.bank_gen[13].mem[bank_addr];
-        4'hE: return memory.bank_gen[14].mem[bank_addr];
-        4'hF: return memory.bank_gen[15].mem[bank_addr];
-        default: return 8'h00;
+        2'b00: return memory.bank_gen[0].mem[row_addr][8*(3-byte_sel) +: 8];
+        2'b01: return memory.bank_gen[1].mem[row_addr][8*(3-byte_sel) +: 8];
+        2'b10: return memory.bank_gen[2].mem[row_addr][8*(3-byte_sel) +: 8];
+        2'b11: return memory.bank_gen[3].mem[row_addr][8*(3-byte_sel) +: 8];
       endcase
     end
   endfunction

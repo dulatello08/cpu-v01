@@ -1,5 +1,9 @@
 # Execute Stage Module Reference
 
+> [!TIP]
+> Module Index: [README.md](README.md) | Docs Home: [../DOCS_INDEX.md](../DOCS_INDEX.md)
+
+
 ## Overview
 The Execute Stage performs ALU operations, evaluates branch conditions, computes memory addresses, and handles multiplication. It supports dual-issue execution with two parallel execution paths.
 

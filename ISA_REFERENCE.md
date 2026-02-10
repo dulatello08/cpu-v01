@@ -1,5 +1,9 @@
 # NeoCore16x32 Instruction Set Architecture Reference
 
+> [!TIP]
+> Docs Home: [DOCS_INDEX.md](DOCS_INDEX.md)
+
+
 ## Table of Contents
 
 1. [Instruction Set Overview](#instruction-set-overview)
@@ -999,10 +1003,10 @@ Operation: R1 = mem16[R3 + 0x100]
 
 ## Instruction Timing
 
-All instructions execute through the 5-stage pipeline:
-- **Minimum latency**: 5 cycles (IF, ID, EX, MEM, WB)
+All instructions execute through the 6-stage pipeline:
+- **Minimum latency**: 6 cycles (IF, IB, ID, EX, MEM, WB)
 - **Throughput**: 1-2 instructions/cycle (with dual-issue)
-- **Branch penalty**: 2 cycles (flush IF, ID)
+- **Branch penalty**: 3 cycles (flush IF/IB/ID)
 - **Load-use hazard**: 1 cycle stall
 
 **Best-case scenario** (dual-issue throughout):
@@ -1022,4 +1026,3 @@ CPI ≈ 0.67 - 0.83 (1.2 - 1.5 IPC)
 ---
 
 This ISA reference is derived entirely from the RTL implementation in `decode_unit.sv`, `neocore_pkg.sv`, and the verified behavior in testbenches. All encodings, lengths, and behaviors match the actual hardware.
-

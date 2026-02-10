@@ -1,5 +1,9 @@
 # neocore_pkg.sv - Package Definitions
 
+> [!TIP]
+> Module Index: [README.md](README.md) | Docs Home: [../DOCS_INDEX.md](../DOCS_INDEX.md)
+
+
 ## Purpose
 
 The `neocore_pkg` SystemVerilog package contains all type definitions, constants, enumerations, and helper functions used throughout the NeoCore16x32 CPU implementation. It serves as the central repository for shared definitions to ensure consistency across all modules.
@@ -98,7 +102,7 @@ parameter int NUM_REGS = 16;       // 16 general-purpose registers
 
 ## Pipeline Stage Structures
 
-### IF/ID Pipeline Register
+### IB Entry (Instruction Buffer)
 
 ```verilog
 typedef struct packed {
@@ -357,4 +361,3 @@ The package itself is not testable in isolation. Verification occurs through:
 - Ensuring consistency across modules
 
 All RTL files import this package and depend on its definitions.
-
