@@ -237,6 +237,8 @@ module execute_stage
   // Internal signals for testbench compatibility
   logic branch_taken_0;
   assign branch_taken_0 = branch_taken_shared && id_ex_0.is_branch;
+  logic squash_slot1;
+  assign squash_slot1 = id_ex_0.is_branch && branch_taken_shared;
 
   // ============================================================================
   // Result Selection and Output (Instruction 0)
@@ -311,7 +313,7 @@ module execute_stage
   // ============================================================================
   
   always_comb begin
-    ex_mem_1.valid = id_ex_1.valid;
+    ex_mem_1.valid = id_ex_1.valid && !squash_slot1;
     ex_mem_1.pc = id_ex_1.pc;
     ex_mem_1.rd_addr = id_ex_1.rd_addr;
     ex_mem_1.rd2_addr = id_ex_1.rd2_addr;

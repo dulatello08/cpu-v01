@@ -15,6 +15,7 @@ The Execute Stage performs ALU operations, evaluates branch conditions, computes
 - Branch condition evaluation via branch_unit
 - Memory address computation
 - **Fixed: MOV immediate instruction handling**
+- **Branch squash**: Slot 1 is squashed when a slot 0 branch is taken
 
 ### Ports
 
@@ -107,7 +108,8 @@ execute_stage execute (
 
 1. **MOV Instruction**: Special handling to use immediate for non-register specifiers
 2. **Forwarding**: Supports forwarding from EX, MEM, and WB stages (6 paths total)
-3. **Flags**: Z and V flags computed but not yet fully integrated into branch logic
+3. **Slot 1 Squash**: When slot 0 resolves a taken branch, slot 1 is marked invalid to prevent side effects
+4. **Flags**: Z and V flags computed but not yet fully integrated into branch logic
 
 ### Related Modules
 - `alu.sv`: Arithmetic/logic operations

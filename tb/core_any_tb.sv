@@ -101,6 +101,15 @@ module core_any_tb;
   int issue_inst_count;
   int fetch_inst_count;
   int ib_inst_count;
+  int issue_inc;
+  int fetch_inc;
+  int ib_inc;
+
+  always_comb begin
+    issue_inc = (dut.issue_inst0 ? 1 : 0) + (dut.issue_inst1 ? 1 : 0);
+    fetch_inc = (dut.fetch.valid_0 ? 1 : 0) + (dut.fetch.valid_1 ? 1 : 0);
+    ib_inc = (dut.ib_out_0.valid ? 1 : 0) + (dut.ib_out_1.valid ? 1 : 0);
+  end
   
   always_ff @(posedge clk) begin
     if (rst) begin
@@ -120,24 +129,9 @@ module core_any_tb;
       ib_inst_count <= 0;
     end else begin
       cycle_count <= cycle_count + 1;
-      if (dut.issue_inst0) begin
-        issue_inst_count <= issue_inst_count + 1;
-      end
-      if (dut.issue_inst1) begin
-        issue_inst_count <= issue_inst_count + 1;
-      end
-      if (dut.fetch.valid_0) begin
-        fetch_inst_count <= fetch_inst_count + 1;
-      end
-      if (dut.fetch.valid_1) begin
-        fetch_inst_count <= fetch_inst_count + 1;
-      end
-      if (dut.ib_out_0.valid) begin
-        ib_inst_count <= ib_inst_count + 1;
-      end
-      if (dut.ib_out_1.valid) begin
-        ib_inst_count <= ib_inst_count + 1;
-      end
+      issue_inst_count <= issue_inst_count + issue_inc;
+      fetch_inst_count <= fetch_inst_count + fetch_inc;
+      ib_inst_count <= ib_inst_count + ib_inc;
       if (dual_issue_active) begin
         dual_issue_count <= dual_issue_count + 1;
       end

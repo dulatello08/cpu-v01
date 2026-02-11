@@ -104,7 +104,7 @@ mem[addr + 1] <= data[7:0];   // LSB at higher address
 - Alignment challenges across memory fetch boundaries
 
 **Solutions**:
-- 32-byte circular buffer in fetch_unit
+- 64-byte window in fetch_unit (four 16-byte blocks: HI/LO/PF/P2)
 - Pre-decode specifier+opcode to calculate length
 - Wide 128-bit fetch (16 bytes) to span boundaries
 - get_inst_length() function centralizes logic
@@ -113,8 +113,10 @@ mem[addr + 1] <= data[7:0];   // LSB at higher address
 
 **Instruction Buffer**:
 ```verilog
-logic [255:0] fetch_buffer;  // 32 bytes
-logic [5:0]   buffer_valid;  // Valid byte count
+logic [127:0] buf_hi;  // current 16-byte block
+logic [127:0] buf_lo;  // next 16-byte block
+logic [127:0] buf_pf;  // prefetch block (base + 32)
+logic [127:0] buf_p2;  // prefetch block (base + 48)
 ```
 
 **Length Calculation** (in neocore_pkg.sv):
@@ -257,7 +259,7 @@ end
 **Rationale**:
 - Simple hardware (no branch prediction table)
 - Early resolution (EX vs. MEM or WB)
-- Acceptable 2-cycle penalty
+- Acceptable frontend penalty for target programs
 
 **Alternative considered**: Branch prediction (BTB, BHT)
 - Rejected: Added complexity, limited benefit for small programs
@@ -267,17 +269,18 @@ end
 
 ## Pipeline Organization
 
-### 6-Stage Pipeline
+### 7-Stage Pipeline (Split Fetch)
 
-**Why 6 stages instead of 3, 5, 7, or more?**
+**Why 7 stages instead of 3, 5, 6, or more?**
 
-1. **Frontend decoupling**: IB stage prevents fetch/issue misalignment without replay
-2. **Timing**: Each stage remains ~8-9 ns at 100 MHz, achievable on FPGA
-3. **Hazard complexity**: One extra stage, but forwarding paths unchanged
-4. **Verification**: IB queue is simple and deterministic
+1. **Frontend decoupling**: IF2 + IB prevent fetch/issue misalignment without replay
+2. **Timing**: IF2 registers cut the fetch critical path for higher Fmax
+3. **Hazard complexity**: One extra stage, forwarding paths unchanged
+4. **Verification**: IB queue remains simple and deterministic
 
 **Stage Breakdown**:
-- **IF**: Instruction fetch (memory access latency)
+- **IF1**: Instruction fetch request/buffer fill
+- **IF2**: Align/decode lengths + registered fetch outputs
 - **IB**: Instruction buffer (queue between fetch and decode)
 - **ID**: Decode + register read
 - **EX**: ALU/multiply/branch (arithmetic latency)
@@ -637,7 +640,7 @@ The NeoCore16x32 design balances performance, complexity, and verifiability. Key
 2. **Variable-length** instructions for code density
 3. **Dual-issue** for performance without excessive complexity
 4. **Von Neumann** memory for simplicity
-5. **6-stage pipeline** with IB for hazard handling and frontend decoupling
+5. **7-stage pipeline** with IF2+IB for hazard handling and frontend decoupling
 
 These choices result in a CPU that is:
 - FPGA-friendly (efficient BRAM usage, achievable timing)

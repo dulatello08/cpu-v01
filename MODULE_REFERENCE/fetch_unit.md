@@ -5,7 +5,7 @@
 
 
 ## Overview
-The Fetch Unit retrieves variable-length instructions from unified memory and presents up to two decoded instruction windows per cycle. It does **not** buffer instructions itself; the Instruction Buffer (IB) lives in `cpu_core`. Fetch advances only when the IB accepts instructions.
+The Fetch Unit retrieves variable-length instructions from unified memory and presents up to two decoded instruction windows per cycle. It includes a registered IF2 output stage and maintains a four-block fetch window (HI/LO/PF/P2). The Instruction Buffer (IB) still lives in `cpu_core`, and fetch advances only when the IB accepts instructions.
 
 ## Module: `fetch_unit`
 
@@ -51,12 +51,14 @@ Instruction lengths range from 2 to 9 bytes.
 
 ### Buffer Management
 
-The fetch unit maintains a **two-block window**:
+The fetch unit maintains a **four-block window**:
 
 1. **HI buffer** (`buf_hi`): 16 bytes at `buf_base_addr`
 2. **LO buffer** (`buf_lo`): next 16 bytes (`buf_base_addr + 16`)
-3. **Extraction**: Extract up to 2 instructions from the 32-byte window
-4. **Prefetch**: When a shift is predicted, prefetch the next block
+3. **PF buffer** (`buf_pf`): prefetch block (`buf_base_addr + 32`)
+4. **P2 buffer** (`buf_p2`): prefetch block (`buf_base_addr + 48`)
+
+Instruction extraction uses the 32-byte `{buf_hi, buf_lo}` window; PF/P2 keep the window full under fast consumption.
 
 ### Critical Behavior: Advance on Accept
 
@@ -76,7 +78,8 @@ end
 
 ### Buffer Shift Direction
 
-The fetch unit does **not** shift an instruction FIFO. It maintains two 16‑byte buffers and moves `buf_lo` into `buf_hi` when `current_pc` crosses a 16‑byte boundary.
+The fetch unit does **not** shift an instruction FIFO. It maintains four 16‑byte buffers and shifts them on 16‑byte boundaries:
+`buf_lo → buf_hi`, `buf_pf → buf_lo`, `buf_p2 → buf_pf`, then refills `buf_p2`.
 
 ### Behavior
 
@@ -115,8 +118,9 @@ fetch_unit fetch (
 
 ### Implementation Notes
 
-1. **Buffer Integrity**: Pending LO prefetch is tracked to avoid mis-routing on block shifts
+1. **Buffer Integrity**: Pending fetches are tracked per block and remapped on shifts
 2. **Instruction Length Decoding**: Computed from specifier byte per ISA spec
+3. **Branch Redirects**: Out-of-window branches can trigger an immediate HI fetch to reduce bubbles
 
 ### Known Limitations
 

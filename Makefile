@@ -52,6 +52,7 @@ RTL_SRCS = \
 	$(RTL_DIR)/register_file.sv \
 	$(RTL_DIR)/decode_unit.sv \
 	$(RTL_DIR)/fetch_unit.sv \
+	$(RTL_DIR)/ib_queue.sv \
 	$(RTL_DIR)/pipeline_regs.sv \
 	$(RTL_DIR)/hazard_unit.sv \
 	$(RTL_DIR)/issue_unit.sv \

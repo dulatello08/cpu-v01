@@ -9,7 +9,7 @@
 
 Pipeline shape:
 
-`IF -> IB -> ID -> EX -> MEM -> WB`
+`IF1 -> IF2 -> IB -> ID -> EX -> MEM -> WB`
 
 ## Module: `cpu_core`
 
@@ -37,7 +37,7 @@ Pipeline shape:
 ## Internal Responsibilities
 
 - Tracks architectural flags (`z_flag`, `v_flag`) with updates from WB.
-- Hosts the instruction buffer queue (IB, depth 6).
+- Instantiates the instruction buffer queue (`ib_queue`, depth 6).
 - Instantiates decode path x2 and issue arbitration.
 - Instantiates hazard detection and forwarding control.
 - Instantiates execute/memory/writeback stages for slot 0 and slot 1.

@@ -12,7 +12,7 @@
 
 ## Part 1: Optimization Without Pipeline Stages (70% Focus)
 
-Achieving a 100% frequency increase (25 MHz -> 50 MHz) without adding pipeline stages requires a relentless focus on reducing combinatorial path delays. In a 6-stage CPU like NeoCore, the critical path is almost always defined by the feedback loops in the Fetch stage (Next PC calculation) or the Hazard/Forwarding logic in the Execute stage. 
+Achieving a 100% frequency increase (25 MHz -> 50 MHz) without adding further pipeline stages requires a relentless focus on reducing combinatorial path delays. In a 7-stage CPU with split fetch (IF1/IF2), the critical path is still often defined by the feedback loops in the Fetch stage (Next PC calculation) or the Hazard/Forwarding logic in the Execute stage. 
 
 The following sections detail specific, actionable optimization strategies categorized by module.
 
@@ -162,8 +162,8 @@ To hit 50-100 MHz comfortably:
 For the target of 50 MHz, the full 8-stage pipeline is overkill and introduces too much complexity (hazards, flushing logic).
 
 **Recommended Path:**
-1.  **Stay with 6 stages.**
+1.  **Stay with 7 stages (split fetch).**
 2.  **Implement the "Pseudo-Parallel" Fetch optimizations** (Part 1.2 and 1.3).
 3.  **Harden the BRAM Macros** (Part 2.1) to ensure dedicated ports.
 4.  **Rewrite Hazard Logic** to use bit-vectors (Part 4.1).
-5.  **Only if 50 MHz fails:** Add **one** pipeline stage between Fetch and Decode (The "Fetch Queue"). This decouples the memory latency from the decoding logic, which is the single tightest knot in the design.
+5.  **Only if 50 MHz fails:** Add **one** more frontend stage (deeper fetch queue) between IF2 and IB. This further decouples memory latency from decode at the cost of branch penalty.

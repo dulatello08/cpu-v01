@@ -53,7 +53,7 @@ Instructions can be dual-issued if **ALL** of these conditions are met:
 
 2. **No Resource Hazards**:
    - At most one memory operation (read or write)
-   - **No branch instructions** (any branch must issue alone)
+   - **No dual branches** (a branch may dual-issue with a non-branch)
 
 3. **No Write-After-Write (WAW) Hazards**:
    - Inst0 and Inst1 must not write to same register
@@ -86,7 +86,7 @@ raw_hazard = (inst0_rd_we && inst0_rd_addr != 0 &&
 mem_conflict = (inst0_mem_read || inst0_mem_write) && 
                (inst1_mem_read || inst1_mem_write);
                
-branch_conflict = inst0_is_branch || inst1_is_branch;
+branch_conflict = inst0_is_branch && inst1_is_branch;
 ```
 
 ### Issue Decision
@@ -134,6 +134,7 @@ Dual-issue capability can achieve up to **2 IPC (instructions per cycle)** for i
 1. **Conservative Approach**: Issue unit prevents hazards pessimistically
 2. **Dependence Checking**: RAW hazards between instruction 0 and 1 prevent simultaneous issue.
 3. **Forwarding**: The execution stage implements full forwarding (from EX, MEM, WB to EX) to resolve hazards for issued instructions against in-flight instructions, but the issue unit logic ensures 0 and 1 are independent of *each other* when dual issuing.
+4. **Branch Pairing**: A branch in slot 0 may dual-issue with a non-branch; slot 1 is squashed in execute if the branch is taken.
 
 ### Related Modules
 - `decode_unit.sv`: Provides instruction type and operand information
