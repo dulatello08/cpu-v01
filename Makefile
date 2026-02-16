@@ -258,7 +258,7 @@ core_top.json: build/*.v
 
 # Place and Route (Nextpnr)
 core_top.config: core_top.json ulx3s-85f-min.lpf
-	nextpnr-ecp5 --85k --package CABGA381 --json $< --lpf ulx3s-85f-min.lpf --textcfg $@ --threads 12
+	nextpnr-ecp5 --85k --package CABGA381 --json $< --lpf ulx3s-85f-min.lpf --textcfg $@ --threads 12 --report build/nextpnr_report.json
 
 # Bitstream Generation (Ecppack)
 core_top.bit: core_top.config

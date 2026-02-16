@@ -279,7 +279,13 @@ module execute_stage
     if (id_ex_0.mem_read || id_ex_0.mem_write) begin
       if (id_ex_0.itype == ITYPE_MOV) begin
         if (id_ex_0.specifier >= 8'h0B && id_ex_0.specifier <= 8'h12) begin
-          ex_mem_0.mem_addr = operand_a_0 + id_ex_0.immediate;
+          // Offset addressing: use base register.
+          // For MOV stores, base is rs2; for MOV loads, base is rs1.
+          if (id_ex_0.mem_write) begin
+            ex_mem_0.mem_addr = operand_b_0 + id_ex_0.immediate;
+          end else begin
+            ex_mem_0.mem_addr = operand_a_0 + id_ex_0.immediate;
+          end
         end else begin
           ex_mem_0.mem_addr = id_ex_0.mem_addr;
         end
@@ -348,7 +354,13 @@ module execute_stage
     if (id_ex_1.mem_read || id_ex_1.mem_write) begin
       if (id_ex_1.itype == ITYPE_MOV) begin
         if (id_ex_1.specifier >= 8'h0B && id_ex_1.specifier <= 8'h12) begin
-          ex_mem_1.mem_addr = operand_a_1 + id_ex_1.immediate;
+          // Offset addressing: use base register.
+          // For MOV stores, base is rs2; for MOV loads, base is rs1.
+          if (id_ex_1.mem_write) begin
+            ex_mem_1.mem_addr = operand_b_1 + id_ex_1.immediate;
+          end else begin
+            ex_mem_1.mem_addr = operand_a_1 + id_ex_1.immediate;
+          end
         end else begin
           ex_mem_1.mem_addr = id_ex_1.mem_addr;
         end

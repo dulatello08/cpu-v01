@@ -101,8 +101,7 @@ module memory_stage
           dmem_size = ex_mem_0.mem_size;
           dmem_we = ex_mem_0.mem_write;
           dmem_wdata = (ex_mem_0.mem_size == MEM_BYTE) ?
-                       {24'h0,
-                        (ex_mem_0.mov_byte_hi ? ex_mem_0.mem_wdata[15:8] : ex_mem_0.mem_wdata[7:0])} :
+                       {4{(ex_mem_0.mov_byte_hi ? ex_mem_0.mem_wdata[15:8] : ex_mem_0.mem_wdata[7:0])}} :
                        (ex_mem_0.mem_size == MEM_HALF) ? {16'h0, ex_mem_0.mem_wdata[15:0]} :
                                                          ex_mem_0.mem_wdata; // Word uses 32-bit through
 
@@ -115,8 +114,7 @@ module memory_stage
           dmem_size = ex_mem_1.mem_size;
           dmem_we = ex_mem_1.mem_write;
           dmem_wdata = (ex_mem_1.mem_size == MEM_BYTE) ?
-                       {24'h0,
-                        (ex_mem_1.mov_byte_hi ? ex_mem_1.mem_wdata[15:8] : ex_mem_1.mem_wdata[7:0])} :
+                       {4{(ex_mem_1.mov_byte_hi ? ex_mem_1.mem_wdata[15:8] : ex_mem_1.mem_wdata[7:0])}} :
                        (ex_mem_1.mem_size == MEM_HALF) ? {16'h0, ex_mem_1.mem_wdata[15:0]} :
                                                          ex_mem_1.mem_wdata;
 
@@ -132,8 +130,7 @@ module memory_stage
         dmem_size = ex_mem_0.mem_size;
         dmem_we = ex_mem_0.mem_write;
         dmem_wdata = (ex_mem_0.mem_size == MEM_BYTE) ?
-                     {24'h0,
-                      (ex_mem_0.mov_byte_hi ? ex_mem_0.mem_wdata[15:8] : ex_mem_0.mem_wdata[7:0])} :
+                     {4{(ex_mem_0.mov_byte_hi ? ex_mem_0.mem_wdata[15:8] : ex_mem_0.mem_wdata[7:0])}} :
                      (ex_mem_0.mem_size == MEM_HALF) ? {16'h0, ex_mem_0.mem_wdata[15:0]} :
                                                        ex_mem_0.mem_wdata;
         mem_stall = 1'b1;
@@ -170,8 +167,7 @@ module memory_stage
         dmem_size = ex_mem_1.mem_size;
         dmem_we = ex_mem_1.mem_write;
         dmem_wdata = (ex_mem_1.mem_size == MEM_BYTE) ?
-                     {24'h0,
-                      (ex_mem_1.mov_byte_hi ? ex_mem_1.mem_wdata[15:8] : ex_mem_1.mem_wdata[7:0])} :
+                     {4{(ex_mem_1.mov_byte_hi ? ex_mem_1.mem_wdata[15:8] : ex_mem_1.mem_wdata[7:0])}} :
                      (ex_mem_1.mem_size == MEM_HALF) ? {16'h0, ex_mem_1.mem_wdata[15:0]} :
                                                        ex_mem_1.mem_wdata;
         mem_stall = 1'b1;
