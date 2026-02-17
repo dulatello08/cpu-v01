@@ -233,7 +233,7 @@ While the architecture doesn't enforce a specific memory map, typical usage foll
 0xFFFFFFFF +------------------+
 ```
 
-**Note**: This is a **suggested** layout from config.ini. The CPU architecture itself is agnostic to memory mapping.
+**Note**: This is a **suggested** software/platform layout example. The CPU architecture itself is agnostic to memory mapping.
 
 ### Memory Alignment
 

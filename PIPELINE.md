@@ -136,7 +136,7 @@ The IB is a 6-entry queue. It decouples fetch from decode/issue without replay:
 - Fetch advances when instructions are **accepted** into IB
 - Decode/issue consume from IB independently
 
-### Stage 3: Instruction Decode (ID)
+### Stage 4: Instruction Decode (ID)
 
 **Modules**: `decode_unit.sv`, `issue_unit.sv`, `register_file.sv`  
 **Function**: Decode instructions, read registers, determine issue
@@ -300,7 +300,7 @@ dual_issue = issue_inst0 && issue_inst1;
 
 ---
 
-### Stage 4: Execute (EX)
+### Stage 5: Execute (EX)
 
 **Module**: `execute_stage.sv` (integrates `alu.sv`, `multiply_unit.sv`, `branch_unit.sv`)  
 **Function**: Perform arithmetic, logic, multiplication, and branch evaluation
@@ -453,7 +453,7 @@ end
 
 ---
 
-### Stage 5: Memory Access (MEM)
+### Stage 6: Memory Access (MEM)
 
 **Module**: `memory_stage.sv`  
 **Function**: Handle load and store operations to unified memory
@@ -548,7 +548,7 @@ end
 
 ---
 
-### Stage 6: Write-Back (WB)
+### Stage 7: Write-Back (WB)
 
 **Module**: `writeback_stage.sv`  
 **Function**: Write results to register file and update processor flags

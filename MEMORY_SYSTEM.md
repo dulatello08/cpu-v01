@@ -322,7 +322,7 @@ While the architecture doesn't enforce a memory map, typical usage follows:
 0x00050000 - 0xFFFFFFFF   Unused / Future Expansion
 ```
 
-**Note**: This is a **suggested** map from config.ini. The CPU RTL is agnostic to memory mapping.
+**Note**: This is a **suggested** software/platform map example. The CPU RTL is agnostic to memory mapping.
 
 ---
 
@@ -488,4 +488,3 @@ The NeoCore16x32 memory system provides:
 6. **FPGA-optimized** for block RAM synthesis
 
 This design balances performance (dual-port, wide fetch) with simplicity (single address space, straightforward byte ordering) while remaining FPGA-friendly for synthesis.
-
