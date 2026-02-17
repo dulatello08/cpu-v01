@@ -56,6 +56,7 @@ module core_top (
   logic        cpu_halted;
   logic [31:0] cpu_current_pc;
   logic        cpu_dual_issue_active;
+  logic        led_mmio_ffff;
 
   // ==========================================================================
   // Heartbeat Counter
@@ -122,13 +123,48 @@ module core_top (
   // ==========================================================================
   // LED Logic
   // ==========================================================================
+
+  // LED MMIO register at byte address 0xFFFF:
+  // any non-zero write to that byte turns LED on; zero turns it off.
+  always_ff @(posedge clk_25mhz) begin
+    if (rst) begin
+      led_mmio_ffff <= 1'b0;
+    end else if (cpu_data_req && cpu_data_we) begin
+      logic [3:0] be;
+
+      be = 4'b0000;
+      case (cpu_data_size)
+        2'b00: begin
+          case (cpu_data_addr[1:0])
+            2'b00: be = 4'b1000;
+            2'b01: be = 4'b0100;
+            2'b10: be = 4'b0010;
+            2'b11: be = 4'b0001;
+          endcase
+        end
+        2'b01: begin
+          if (cpu_data_addr[1] == 1'b0) be = 4'b1100;
+          else                          be = 4'b0011;
+        end
+        2'b10: begin
+          be = 4'b1111;
+        end
+        default: be = 4'b0000;
+      endcase
+
+      if ((cpu_data_addr[15:2] == 14'h3FFF) && be[0]) begin
+        led_mmio_ffff <= (cpu_data_wdata[7:0] != 8'h00);
+      end
+    end
+  end
   
   always_ff @(posedge clk_25mhz) begin
     led[7]   <= rst;                       // LED[7]: Reset Status (ON = in reset)
     led[6]   <= heartbeat[24];             // LED[6]: Heartbeat (toggle approx 0.6s)
     led[5]   <= cpu_halted;                // LED[5]: CPU Halted
     led[4]   <= cpu_dual_issue_active;     // LED[4]: Dual Issue Active
-    led[3:0] <= cpu_current_pc[3:0];       // LED[3:0]: PC bits [3:0] (fast toggle)
+    led[3:1] <= cpu_current_pc[3:1];       // LED[3:1]: PC bits [3:1] (fast toggle)
+    led[0]   <= led_mmio_ffff;             // LED[0]: MMIO byte at 0xFFFF (!=0 => ON)
   end
 
 endmodule : core_top
