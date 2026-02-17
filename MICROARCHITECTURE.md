@@ -13,7 +13,7 @@ This document provides detailed information about the internal microarchitectura
 ```
 core_top
 ├── fetch_unit
-├── IB queue (in cpu_core)
+├── ib_queue
 ├── decode_unit (x2 for dual-issue)
 ├── issue_unit
 ├── register_file
@@ -155,44 +155,51 @@ assign stall_pipeline = hazard_stall ||  // Data hazard
 Fetch variable-length instructions from unified memory and prepare them for decode.
 
 ### Key Features
-1. 32-byte circular instruction buffer
+1. 64-byte instruction window (four 16-byte blocks)
 2. Wide 128-bit memory fetch (16 bytes/cycle)
-3. Pre-decode instruction boundaries
-4. Dual-instruction extraction for dual-issue
-5. Big-endian byte handling
+3. IF1/IF2 split with registered fetch outputs
+4. Pre-decode instruction boundaries
+5. Dual-instruction extraction for dual-issue
+6. Big-endian byte handling
 
-### State Machine
+### Request Scheduling
 
-**States**:
-- **FETCH_ACTIVE**: Requesting/receiving instructions from memory
-- **FETCH_STALL**: Stalled waiting for buffer space or downstream
+**Priorities**:
+- Fill HI block first
+- Then fill LO block
+- Then prefetch the next blocks (PF, P2)
 
-**Transitions**:
-- Request memory when buffer_valid < 20 bytes
-- Receive 16 bytes on mem_ack
-- Consume bytes based on issued instructions
+**Behavior**:
+- Track inflight fetches and destination (HI/LO/PF)
+- Shift blocks when the PC crosses a 16-byte boundary
 
 ### Buffer Management
 
-The fetch unit maintains a **two‑block window**:
+The fetch unit maintains a **four‑block window** (HI/LO active + PF/P2 prefetch):
 
 ```verilog
 logic [127:0] buf_hi;        // 16 bytes at buf_base_addr
 logic [127:0] buf_lo;        // Next 16 bytes (buf_base_addr + 16)
 logic         buf_hi_valid;
 logic         buf_lo_valid;
+logic [127:0] buf_pf;        // Prefetch block (buf_base_addr + 32)
+logic         buf_pf_valid;
+logic [127:0] buf_p2;        // Prefetch block (buf_base_addr + 48)
+logic         buf_p2_valid;
 logic [31:0]  buf_base_addr; // 16‑byte aligned
 logic [31:0]  current_pc;    // Byte address
 ```
 
-When `current_pc` crosses a 16‑byte boundary, `buf_lo` shifts into `buf_hi` and
-`buf_lo` is refilled.
+When `current_pc` crosses a 16‑byte boundary, `buf_lo` shifts into `buf_hi`,
+`buf_pf` shifts into `buf_lo`, `buf_p2` shifts into `buf_pf`, and `buf_p2`
+is refilled.
 
 ### Instruction Extraction
 
 The unit extracts up to two instructions from `{buf_hi, buf_lo}`. Instruction
 lengths are decoded from specifier/opcode and are **valid only when the required
-bytes are present** (HI/LO valid).
+bytes are present** (HI/LO valid). Outputs are registered in IF2 and held until
+accepted by the IB.
 
 ### PC Management
 
@@ -209,12 +216,13 @@ else
 
 ### Memory Interface
 
-Memory requests are generated to keep `buf_hi` and `buf_lo` filled. Pending LO
-prefetches are tracked to avoid mis‑routing on block shifts.
+Memory requests are generated to keep `buf_hi`, `buf_lo`, `buf_pf`, and `buf_p2`
+filled. Inflight destinations are tracked so responses are routed correctly on
+block shifts.
 
 ### Timing
 
-- **Fetch Request Path**: Registered at fetch output (adds one frontend control cycle)
+- **Fetch Output Path**: Registered in IF2 (adds one frontend control cycle)
 - **Fetch Latency**: 1 cycle from `mem_req` to `mem_ack` (memory read path)
 - **Throughput**: Up to 2 instructions per cycle (if both fit and accepted)
 
@@ -854,7 +862,7 @@ end
 
 ## Summary
 
-The NeoCore16x32 microarchitecture implements a dual-issue, 6-stage pipeline with:
+The NeoCore16x32 microarchitecture implements a dual-issue, 7-stage pipeline with split fetch (IF1/IF2) and:
 
 1. **Modular Design**: Clear separation of pipeline stages
 2. **Comprehensive Forwarding**: Minimize stalls with multi-source forwarding

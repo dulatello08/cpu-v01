@@ -20,9 +20,6 @@ module if_id_reg
   always_ff @(posedge clk) begin
     if (rst || flush) begin
       data_out.valid <= 1'b0;
-      data_out.pc <= 32'h0;
-      data_out.inst_data <= 72'h0;
-      data_out.inst_len <= 4'h0;
     end else if (!stall) begin
       data_out <= data_in;
     end
@@ -45,19 +42,11 @@ module id_ex_reg
   always_ff @(posedge clk) begin
     if (rst || flush) begin
       data_out.valid <= 1'b0;
-      data_out.pc <= 32'h0;
       data_out.opcode <= OP_NOP;
       data_out.specifier <= 8'h00;
       data_out.itype <= ITYPE_CTRL;
       data_out.alu_op <= ALU_NOP;
-      data_out.rs1_addr <= 4'h0;
-      data_out.rs2_addr <= 4'h0;
-      data_out.rs1_data <= 16'h0;
-      data_out.rs2_data <= 16'h0;
-      data_out.immediate <= 32'h0;
       data_out.mov_byte_hi <= 1'b0;
-      data_out.rd_addr <= 4'h0;
-      data_out.rd2_addr <= 4'h0;
       data_out.rd_we <= 1'b0;
       data_out.rd2_we <= 1'b0;
       data_out.mem_read <= 1'b0;
@@ -88,23 +77,14 @@ module ex_mem_reg
   always_ff @(posedge clk) begin
     if (rst || flush) begin
       data_out.valid <= 1'b0;
-      data_out.pc <= 32'h0;
-      data_out.alu_result <= 32'h0;
-      data_out.z_flag <= 1'b0;
-      data_out.v_flag <= 1'b0;
-      data_out.rd_addr <= 4'h0;
-      data_out.rd2_addr <= 4'h0;
       data_out.rd_we <= 1'b0;
       data_out.rd2_we <= 1'b0;
       data_out.mem_read <= 1'b0;
       data_out.mem_write <= 1'b0;
       data_out.mem_size <= MEM_HALF;
-      data_out.mem_addr <= 32'h0;
-      data_out.mem_wdata <= 16'h0;
+      data_out.is_halt <= 1'b0;
       data_out.mov_byte_hi <= 1'b0;
       data_out.branch_taken <= 1'b0;
-      data_out.branch_target <= 32'h0;
-      data_out.is_halt <= 1'b0;
     end else if (!stall) begin
       data_out <= data_in;
     end
@@ -126,15 +106,8 @@ module mem_wb_reg
   always_ff @(posedge clk) begin
     if (rst || flush) begin
       data_out.valid <= 1'b0;
-      data_out.pc <= 32'h0;
-      data_out.wb_data <= 16'h0;
-      data_out.wb_data2 <= 16'h0;
-      data_out.rd_addr <= 4'h0;
-      data_out.rd2_addr <= 4'h0;
       data_out.rd_we <= 1'b0;
       data_out.rd2_we <= 1'b0;
-      data_out.z_flag <= 1'b0;
-      data_out.v_flag <= 1'b0;
       data_out.is_halt <= 1'b0;
     end else if (!stall) begin
       data_out <= data_in;

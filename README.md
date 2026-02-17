@@ -7,7 +7,7 @@
 
 NeoCore16x32 is a dual-issue, in-order CPU implemented in SystemVerilog with:
 
-- 6-stage pipeline: IF -> IB -> ID -> EX -> MEM -> WB
+- 7-stage pipeline: IF1 -> IF2 -> IB -> ID -> EX -> MEM -> WB
 - 16-bit register datapath and 32-bit addressing
 - Variable-length instructions (2 to 9 bytes)
 - Big-endian instruction/data encoding

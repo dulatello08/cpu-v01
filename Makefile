@@ -52,6 +52,7 @@ RTL_SRCS = \
 	$(RTL_DIR)/register_file.sv \
 	$(RTL_DIR)/decode_unit.sv \
 	$(RTL_DIR)/fetch_unit.sv \
+	$(RTL_DIR)/ib_queue.sv \
 	$(RTL_DIR)/pipeline_regs.sv \
 	$(RTL_DIR)/hazard_unit.sv \
 	$(RTL_DIR)/issue_unit.sv \
@@ -250,14 +251,14 @@ wave_alu: $(BUILD_DIR)/alu_tb.vcd
 # We combine everything into one file to handle packages/interfaces correctly
 build/*.v: $(RTL_SRCS)
 	@mkdir -p $(BUILD_DIR)
-	sv2v -w $(BUILD_DIR) $(RTL_SRCS)
+	sv2v -D FPGA_ECP5 -w $(BUILD_DIR) $(RTL_SRCS)
 # Synthesis (Yosys) using the converted Verilog file
 core_top.json: build/*.v
 	yosys -p "read_verilog build/*.v; synth_ecp5 -top core_top -json core_top.json"
 
 # Place and Route (Nextpnr)
 core_top.config: core_top.json ulx3s-85f-min.lpf
-	nextpnr-ecp5 --85k --package CABGA381 --json $< --lpf ulx3s-85f-min.lpf --textcfg $@ --threads 12
+	nextpnr-ecp5 --85k --package CABGA381 --json $< --lpf ulx3s-85f-min.lpf --textcfg $@ --threads 12 --report build/nextpnr_report.json
 
 # Bitstream Generation (Ecppack)
 core_top.bit: core_top.config

@@ -101,6 +101,24 @@ module core_any_tb;
   int issue_inst_count;
   int fetch_inst_count;
   int ib_inst_count;
+  int issue_inc;
+  int fetch_inc;
+  int ib_inc;
+  int issue_reject_count;
+  int issue_mem_conflict_count;
+  int issue_data_dep_count;
+  int issue_write_conflict_count;
+  int issue_branch_restrict_count;
+  int issue_mul_restrict_count;
+  int issue_halt_restrict_count;
+  int stall_mem_count;
+  int stall_hazard_count;
+
+  always_comb begin
+    issue_inc = (dut.issue_inst0 ? 1 : 0) + (dut.issue_inst1 ? 1 : 0);
+    fetch_inc = (dut.fetch.valid_0 ? 1 : 0) + (dut.fetch.valid_1 ? 1 : 0);
+    ib_inc = (dut.ib_out_0.valid ? 1 : 0) + (dut.ib_out_1.valid ? 1 : 0);
+  end
   
   always_ff @(posedge clk) begin
     if (rst) begin
@@ -118,26 +136,20 @@ module core_any_tb;
       issue_inst_count <= 0;
       fetch_inst_count <= 0;
       ib_inst_count <= 0;
+      issue_reject_count <= 0;
+      issue_mem_conflict_count <= 0;
+      issue_data_dep_count <= 0;
+      issue_write_conflict_count <= 0;
+      issue_branch_restrict_count <= 0;
+      issue_mul_restrict_count <= 0;
+      issue_halt_restrict_count <= 0;
+      stall_mem_count <= 0;
+      stall_hazard_count <= 0;
     end else begin
       cycle_count <= cycle_count + 1;
-      if (dut.issue_inst0) begin
-        issue_inst_count <= issue_inst_count + 1;
-      end
-      if (dut.issue_inst1) begin
-        issue_inst_count <= issue_inst_count + 1;
-      end
-      if (dut.fetch.valid_0) begin
-        fetch_inst_count <= fetch_inst_count + 1;
-      end
-      if (dut.fetch.valid_1) begin
-        fetch_inst_count <= fetch_inst_count + 1;
-      end
-      if (dut.ib_out_0.valid) begin
-        ib_inst_count <= ib_inst_count + 1;
-      end
-      if (dut.ib_out_1.valid) begin
-        ib_inst_count <= ib_inst_count + 1;
-      end
+      issue_inst_count <= issue_inst_count + issue_inc;
+      fetch_inst_count <= fetch_inst_count + fetch_inc;
+      ib_inst_count <= ib_inst_count + ib_inc;
       if (dual_issue_active) begin
         dual_issue_count <= dual_issue_count + 1;
       end
@@ -166,6 +178,35 @@ module core_any_tb;
         fetch_no_hi_count <= fetch_no_hi_count + 1;
       end else if (!dut.fetch.inst0_fits) begin
         fetch_straddle_stall_count <= fetch_straddle_stall_count + 1;
+      end
+
+      if (dut.issue.inst0_valid && dut.issue.inst1_valid && !dut.issue.dual_issue) begin
+        issue_reject_count <= issue_reject_count + 1;
+        if (dut.issue.mem_port_conflict) begin
+          issue_mem_conflict_count <= issue_mem_conflict_count + 1;
+        end
+        if (dut.issue.data_dependency) begin
+          issue_data_dep_count <= issue_data_dep_count + 1;
+        end
+        if (dut.issue.write_port_conflict) begin
+          issue_write_conflict_count <= issue_write_conflict_count + 1;
+        end
+        if (dut.issue.branch_restriction) begin
+          issue_branch_restrict_count <= issue_branch_restrict_count + 1;
+        end
+        if (dut.issue.mul_restriction) begin
+          issue_mul_restrict_count <= issue_mul_restrict_count + 1;
+        end
+        if (dut.issue.halt_restriction) begin
+          issue_halt_restrict_count <= issue_halt_restrict_count + 1;
+        end
+      end
+
+      if (dut.mem_stall) begin
+        stall_mem_count <= stall_mem_count + 1;
+      end
+      if (dut.hazard_stall) begin
+        stall_hazard_count <= stall_hazard_count + 1;
       end
     end
   end
@@ -337,8 +378,56 @@ module core_any_tb;
                    fetch_no_hi_count, 100.0 * fetch_no_hi_count / cycle_count);
           $display("Fetch inst0-fits stalls: %0d (%.1f%%)",
                    fetch_straddle_stall_count, 100.0 * fetch_straddle_stall_count / cycle_count);
+          $display("Issue rejects (both valid, no dual): %0d (%.1f%%)",
+                   issue_reject_count, 100.0 * issue_reject_count / cycle_count);
+          $display("  - mem conflict: %0d (%.1f%% of cycles, %.1f%% of rejects)",
+                   issue_mem_conflict_count,
+                   100.0 * issue_mem_conflict_count / cycle_count,
+                   (issue_reject_count == 0) ? 0.0 :
+                   100.0 * issue_mem_conflict_count / issue_reject_count);
+          $display("  - data dep: %0d (%.1f%% of cycles, %.1f%% of rejects)",
+                   issue_data_dep_count,
+                   100.0 * issue_data_dep_count / cycle_count,
+                   (issue_reject_count == 0) ? 0.0 :
+                   100.0 * issue_data_dep_count / issue_reject_count);
+          $display("  - write conflict: %0d (%.1f%% of cycles, %.1f%% of rejects)",
+                   issue_write_conflict_count,
+                   100.0 * issue_write_conflict_count / cycle_count,
+                   (issue_reject_count == 0) ? 0.0 :
+                   100.0 * issue_write_conflict_count / issue_reject_count);
+          $display("  - branch restrict: %0d (%.1f%% of cycles, %.1f%% of rejects)",
+                   issue_branch_restrict_count,
+                   100.0 * issue_branch_restrict_count / cycle_count,
+                   (issue_reject_count == 0) ? 0.0 :
+                   100.0 * issue_branch_restrict_count / issue_reject_count);
+          $display("  - mul restrict: %0d (%.1f%% of cycles, %.1f%% of rejects)",
+                   issue_mul_restrict_count,
+                   100.0 * issue_mul_restrict_count / cycle_count,
+                   (issue_reject_count == 0) ? 0.0 :
+                   100.0 * issue_mul_restrict_count / issue_reject_count);
+          $display("  - halt restrict: %0d (%.1f%% of cycles, %.1f%% of rejects)",
+                   issue_halt_restrict_count,
+                   100.0 * issue_halt_restrict_count / cycle_count,
+                   (issue_reject_count == 0) ? 0.0 :
+                   100.0 * issue_halt_restrict_count / issue_reject_count);
+          $display("Stall cycles: mem=%0d (%.1f%%), hazard=%0d (%.1f%%)",
+                   stall_mem_count, 100.0 * stall_mem_count / cycle_count,
+                   stall_hazard_count, 100.0 * stall_hazard_count / cycle_count);
         end
         $display("========================================");
+
+        // Temporary hexdump of the first 256 bytes of memory for debugging
+        if ($test$plusargs("PROFILE")) begin
+          $display("\nMemory hexdump [0x0000..0x00FF]:");
+          for (int i = 0; i < 256; i += 16) begin
+            $display("%04h: %02h %02h %02h %02h %02h %02h %02h %02h %02h %02h %02h %02h %02h %02h %02h %02h",
+                     i[15:0],
+                     read_byte(i+0), read_byte(i+1), read_byte(i+2), read_byte(i+3),
+                     read_byte(i+4), read_byte(i+5), read_byte(i+6), read_byte(i+7),
+                     read_byte(i+8), read_byte(i+9), read_byte(i+10), read_byte(i+11),
+                     read_byte(i+12), read_byte(i+13), read_byte(i+14), read_byte(i+15));
+          end
+        end
         
         // Dump all register values in hex format
         $display("\nRegister Dump (hex):");

@@ -189,18 +189,18 @@ module fetch_unit_tb;
     @(posedge clk);
     while (!valid_0) @(posedge clk);
     
-    // Cycle 4: With the registered fetch request stage, boundary dual-issue is
-    // delayed by one cycle, so we first observe PC=0x20.
+    // Cycle 4: With deeper prefetch, boundary dual-issue can proceed without
+    // an extra bubble. Expect advancement by 4 bytes.
     $display("Time %0t: Cycle 4. PC0=%h", $time, pc_0);
-    if (pc_0 == 32'h20) $display("PASS: Boundary step reached PC=0x20");
-    else $display("FAIL: Expected PC=20, got %h", pc_0);
+    if (pc_0 == 32'h22) $display("PASS: Boundary-crossed dual issue reached PC=0x22");
+    else $display("FAIL: Expected PC=22, got %h", pc_0);
 
-    // Cycle 5: Now we should see the boundary-crossed dual-issue advancement.
+    // Cycle 5: Continue dual-issue advancement.
     @(posedge clk);
     while (!valid_0) @(posedge clk);
     $display("Time %0t: Cycle 5. PC0=%h", $time, pc_0);
-    if (pc_0 == 32'h24) $display("PASS: Boundary-crossed dual issue reached PC=0x24");
-    else $display("FAIL: Expected PC=24, got %h", pc_0);
+    if (pc_0 == 32'h26) $display("PASS: Dual issue advanced to PC=0x26");
+    else $display("FAIL: Expected PC=26, got %h", pc_0);
     
     $finish;
   end

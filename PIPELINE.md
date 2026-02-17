@@ -19,23 +19,24 @@
 
 ## Pipeline Overview
 
-The NeoCore16x32 implements a **classic 6-stage pipeline** with dual-issue capability. The pipeline is in-order, meaning instructions are issued and completed in program order (though execution may overlap).
+The NeoCore16x32 implements a **7-stage pipeline** with dual-issue capability. The pipeline is in-order, meaning instructions are issued and completed in program order (though execution may overlap). Fetch is split into **IF1** (request/buffer) and **IF2** (decode/align with registered outputs).
 
 ### Pipeline Stage Summary
 
 ```
-+======+    +======+    +======+    +======+    +======+    +======+
-|  IF  | -> |  IB  | -> |  ID  | -> |  EX  | -> | MEM  | -> |  WB  |
-+======+    +======+    +======+    +======+    +======+    +======+
-Fetch     Buffer    Decode    Execute   Memory    Write-back
++======+    +======+    +======+    +======+    +======+    +======+    +======+
+| IF1 | -> | IF2 | -> |  IB  | -> |  ID  | -> |  EX  | -> | MEM  | -> |  WB  |
++======+    +======+    +======+    +======+    +======+    +======+    +======+
+FetchReq   FetchOut   Buffer    Decode    Execute   Memory    Write-back
 ```
 
 Each stage performs specific operations:
 
 | Stage | Name | Module | Primary Function |
 |-------|------|--------|------------------|
-| **IF** | Instruction Fetch | fetch_unit.sv | Fetch instructions from memory |
-| **IB** | Instruction Buffer | cpu_core.sv | Queue fetched instructions (6 entries) |
+| **IF1** | Instruction Fetch Request | fetch_unit.sv | Issue fetch requests, maintain fetch buffers |
+| **IF2** | Instruction Fetch Output | fetch_unit.sv | Align/decode lengths and register outputs |
+| **IB** | Instruction Buffer | ib_queue.sv | Queue fetched instructions (6 entries) |
 | **ID** | Instruction Decode | decode_unit.sv, issue_unit.sv | Decode and issue instructions |
 | **EX** | Execute | execute_stage.sv | ALU, multiply, branch evaluation |
 | **MEM** | Memory Access | memory_stage.sv | Load/store operations |
@@ -46,72 +47,59 @@ Each stage performs specific operations:
 1. **Dual-Issue Capability**: Two instructions can progress through each stage simultaneously
 2. **Hardware Hazard Detection**: Automatic stall generation for data hazards
 3. **Data Forwarding**: Results forwarded from later stages to earlier stages
-4. **Branch Resolution in EX**: Branches resolved in EX; IB adds one stage of latency
+4. **Branch Resolution in EX**: Branches resolved in EX; IF2/IB add frontend latency
 5. **Big-Endian Throughout**: All pipeline stages respect big-endian byte ordering
 
 ---
 
 ## Pipeline Stages in Detail
 
-### Stage 1: Instruction Fetch (IF)
+### Stage 1: Instruction Fetch Request (IF1)
 
 **Module**: `fetch_unit.sv`  
-**Function**: Fetch variable-length instructions from unified memory
+**Function**: Issue fetch requests and maintain the instruction buffers
 
 #### Operations Performed
 
 1. **Determine PC**: Use current PC or branch target
 2. **Request Memory**: Request 16 bytes from instruction fetch port
-3. **Buffer Management**: Maintain 32-byte circular instruction buffer
-4. **Pre-Decode**: Determine instruction boundaries for both instructions
-5. **Length Calculation**: Call `get_inst_length(opcode, specifier)` 
-6. **Dual-Instruction Extract**: Extract up to two instructions for dual-issue
-7. **PC Update**: Calculate next PC based on consumed bytes
+3. **Buffer Management**: Maintain 64-byte window (HI/LO/PF/P2), decode from HI/LO
+4. **Inflight Tracking**: Track outstanding fetches and fill buffers on `mem_ack`
 
-#### Instruction Buffer Design
+### Stage 2: Instruction Fetch Output (IF2)
 
-The fetch unit maintains a 32-byte buffer (`fetch_buffer[255:0]`) organized big-endian:
+**Module**: `fetch_unit.sv`  
+**Function**: Align, decode lengths, and register fetch outputs
 
-```
-Buffer bit positions (big-endian):
-[255:248] = Byte 0  (first byte, lowest address)
-[247:240] = Byte 1
-[239:232] = Byte 2
-...
-[7:0]     = Byte 31 (last byte, highest address)
-```
+#### Operations Performed
 
-**Buffer Refill Strategy**:
-- Request new 16 bytes when `buffer_valid < 20` bytes
-- Append new bytes at low end (shift left, OR in new data)
-- Track `buffer_pc` (address of first byte)
-- Track `buffer_valid` (number of valid bytes, 0-32)
+1. **Pre-Decode**: Determine instruction boundaries for both instructions
+2. **Length Calculation**: Call `get_inst_length(opcode, specifier)` 
+3. **Dual-Instruction Extract**: Extract up to two instructions for dual-issue
+4. **Output Register**: Hold outputs until accepted by the IB
+5. **PC Update**: Calculate next PC based on consumed bytes
+
+#### Instruction Window
+
+The fetch unit maintains four 16-byte blocks:
+
+- `buf_hi`: base block at `buf_base_addr`
+- `buf_lo`: next block at `buf_base_addr + 16`
+- `buf_pf`: prefetch block at `buf_base_addr + 32`
+- `buf_p2`: prefetch block at `buf_base_addr + 48`
+
+HI/LO form the active 32-byte decode window; PF/P2 are prefetch depth.
+
+**Refill Strategy**:
+- Request missing blocks in priority order (HI → LO → PF → P2)
+- Allow LO to overlap in-flight HI fetches to avoid boundary bubbles
+- Track inflight destinations so responses land in the right block after shifts
 
 #### Instruction Extraction
 
-**First Instruction (inst_data_0)**:
-```verilog
-inst_data_0 = fetch_buffer[255:184];  // Top 9 bytes (with padding to 72 bits)
-inst_len_0 = get_inst_length(opcode_0, specifier_0);
-pc_0 = buffer_pc;
-valid_0 = (buffer_valid >= inst_len_0) && (inst_len_0 > 0);
-```
-
-**Second Instruction (inst_data_1)**:
-- Located after first instruction in buffer
-- Offset by `inst_len_0` bytes
-- Requires `buffer_valid >= (inst_len_0 + inst_len_1)`
-
-**Example**:
-```
-Buffer contents (hex bytes):
-[0x00 0x01 0x05 0x12 0x34] [0x01 0x01 0x03 0x02] [more bytes...]
- └─── Instruction 0 ─────┘  └── Instruction 1 ──┘
-
-inst_len_0 = 5 (ADD R5, #0x1234)
-inst_len_1 = 4 (ADD R3, R2)
-Both can be fetched if buffer_valid >= 9
-```
+Instructions are extracted from `{buf_hi, buf_lo}` (big-endian) and length-decoded
+via `get_inst_length()`. `valid_0/1` assert only when all bytes for the instruction
+are present in the HI/LO window.
 
 #### PC Update Logic
 
@@ -128,13 +116,13 @@ Branch:     pc_next = branch_target (with IB flush)
 
 - **Latency**: 1 cycle to fetch from memory (memory ack)
 - **Throughput**: Can fetch instructions for dual-issue in 1 cycle
-- **Buffer refill**: Triggered when less than 20 bytes remain
+- **Buffer refill**: Triggered by missing blocks (HI/LO/PF/P2 invalid)
 
 ---
 
-### Stage 2: Instruction Buffer (IB)
+### Stage 3: Instruction Buffer (IB)
 
-**Module**: `cpu_core.sv` (IB queue logic)  
+**Module**: `ib_queue.sv`  
 **Function**: Queue fetched instructions between IF and ID
 
 #### Operations Performed
@@ -282,7 +270,8 @@ The `issue_unit.sv` examines both decoded instructions and decides which to issu
 
 3. **Branch Restrictions**
    ```verilog
-   branch_restriction = inst0_is_branch || inst1_is_branch;
+   // Allow branch with a non-branch; prevent dual-branch issue.
+   branch_restriction = inst0_is_branch && inst1_is_branch;
    ```
 
 4. **Data Dependencies**
@@ -322,6 +311,7 @@ dual_issue = issue_inst0 && issue_inst1;
 2. **ALU Execution**: Perform arithmetic and logic operations (dual ALU)
 3. **Multiply Execution**: Perform 16x16→32 multiplication (dual multiplier)
 4. **Branch Evaluation**: Compare operands and determine if branch is taken
+   - If slot 0 branch is taken, slot 1 is squashed to prevent side effects
 5. **Address Calculation**: Compute memory addresses for load/store
 6. **Flag Generation**: Generate Z (zero) and V (overflow) flags
 
@@ -635,6 +625,7 @@ Data flows between pipeline stages through registers that hold the pipeline stat
 
 ### IB Queue
 
+**Module**: `ib_queue.sv`  
 **Type**: `if_id_t` entries in a 6-entry queue  
 **Contents per entry**:
 ```verilog
@@ -963,6 +954,8 @@ But if we count effective cycles (first instruction completes cycle 5):
 ---
 
 ## Pipeline Timing Diagrams
+
+**Note**: For readability, timing diagrams label **IF** as the registered fetch output stage (IF2). IF1 (request/buffer fill) is omitted from the timelines.
 
 ### Example 1: Independent ALU Instructions (Dual-Issue)
 

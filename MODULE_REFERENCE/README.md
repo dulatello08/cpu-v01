@@ -13,6 +13,7 @@ This directory contains module-level references for the NeoCore16x32 RTL.
 ## Frontend and Control
 
 - [fetch_unit.sv](fetch_unit.md): Variable-length instruction fetch.
+- [ib_queue.sv](ib_queue.md): Instruction buffer between fetch and decode.
 - [decode_unit.sv](decode_unit.md): Instruction decode and control extraction.
 - [issue_unit.sv](issue_unit.md): Dual-issue eligibility logic.
 - [hazard_unit.sv](hazard_unit.md): Stall/flush/forward controls.
@@ -42,6 +43,7 @@ This directory contains module-level references for the NeoCore16x32 RTL.
 core_top
 └── cpu_core
     ├── fetch_unit
+    ├── ib_queue
     ├── decode_unit x2
     ├── issue_unit
     ├── register_file

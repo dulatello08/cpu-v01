@@ -1003,17 +1003,17 @@ Operation: R1 = mem16[R3 + 0x100]
 
 ## Instruction Timing
 
-All instructions execute through the 6-stage pipeline:
-- **Minimum latency**: 6 cycles (IF, IB, ID, EX, MEM, WB)
+All instructions execute through the 7-stage pipeline:
+- **Minimum latency**: 7 cycles (IF1, IF2, IB, ID, EX, MEM, WB)
 - **Throughput**: 1-2 instructions/cycle (with dual-issue)
-- **Branch penalty**: 3 cycles (flush IF/IB/ID)
+- **Branch penalty**: Frontend flush (IF2/IB/ID) plus refetch, typically 3-4 cycles
 - **Load-use hazard**: 1 cycle stall
 
 **Best-case scenario** (dual-issue throughout):
 ```
-Cycle 1: Fetch inst 0 and 1
-Cycle 2: Decode inst 0 and 1, Fetch inst 2 and 3
-Cycle 3: Execute inst 0 and 1, Decode inst 2 and 3, Fetch inst 4 and 5
+Cycle 1: IF1 request inst 0 and 1
+Cycle 2: IF2 present inst 0 and 1, IF1 request inst 2 and 3
+Cycle 3: Decode inst 0 and 1, IF2 present inst 2 and 3, IF1 request inst 4 and 5
 ...
 Result: 2 instructions per cycle = CPI of 0.5
 ```

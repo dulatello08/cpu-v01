@@ -27,7 +27,7 @@ The NeoCore16x32 is a modern 16-bit CPU architecture with 32-bit addressing capa
 
 1. **Performance through Parallelism**: Dual-issue superscalar execution
 2. **Code Density**: Variable-length instructions minimize program size
-3. **Simplicity**: Classic 6-stage pipeline (IF→IB→ID→EX→MEM→WB) with in-order execution
+3. **Simplicity**: 7-stage pipeline (IF1→IF2→IB→ID→EX→MEM→WB) with in-order execution
 4. **FPGA-Friendly**: Block RAM utilization, no complex CAM structures
 5. **Deterministic**: Predictable timing for real-time applications
 
@@ -363,19 +363,21 @@ Some MOV variants can reach 9 bytes (MOV specifiers 0x0E and 0x12).
 
 ### Instruction Fetch and Buffering
 
-The fetch_unit maintains a **32-byte instruction buffer** to handle variable-length instructions:
+The fetch_unit maintains a **64-byte window** built from four 16-byte blocks:
+`buf_hi`, `buf_lo`, `buf_pf`, and `buf_p2`. The active decode window is
+`{buf_hi, buf_lo}` (32 bytes) while `buf_pf`/`buf_p2` provide prefetch depth.
 
-1. Fetch 16 bytes from memory each cycle (when buffer needs refilling)
-2. Extract specifier and opcode from top of buffer
-3. Calculate instruction length using get_inst_length()
-4. Extract full instruction bytes (up to 9)
-5. Pre-decode second instruction for dual-issue
-6. Consume valid instructions (shift buffer)
+1. Fetch 16 bytes from memory per request (128-bit line)
+2. Keep `buf_hi` aligned to the current PC
+3. Decode instruction lengths from specifier/opcode in the HI/LO window
+4. Extract up to two instructions for dual-issue
+5. Shift blocks when the PC crosses a 16-byte boundary
+6. Prefetch ahead so HI/LO are ready before the boundary is reached
 
 This design allows the CPU to:
-- Handle instructions spanning memory fetch boundaries
+- Handle instructions spanning fetch boundaries
 - Pre-decode two instructions simultaneously
-- Maintain high instruction bandwidth despite variable length
+- Maintain instruction bandwidth despite variable length
 
 ---
 
@@ -488,44 +490,55 @@ Flags are updated in the **Write-Back (WB) stage**, so they reflect the result o
 
 ## Pipeline Architecture
 
-The NeoCore16x32 implements a classic **6-stage pipeline**:
+The NeoCore16x32 implements a **7-stage pipeline** with a split fetch frontend:
 
 ```
-IF  ->  IB  ->  ID  ->  EX  ->  MEM  ->  WB
+IF1  ->  IF2  ->  IB  ->  ID  ->  EX  ->  MEM  ->  WB
 ```
 
 ### Pipeline Stage Descriptions
 
-#### 1. Instruction Fetch (IF)
+#### 1. Instruction Fetch Request (IF1)
 
-**Function**: Fetch instructions from memory  
+**Function**: Issue instruction fetch requests and maintain buffers  
 **Module**: fetch_unit.sv
 
 **Operations**:
 - Request 16 bytes from unified memory (instruction fetch port)
-- Maintain 32-byte circular buffer of fetched bytes
+- Maintain a 64-byte window (HI/LO/PF/P2) with HI/LO as active decode window
+- Track inflight fetches and fill buffers on `mem_ack`
+
+**Output**: Updated fetch buffers (internal to fetch unit)
+
+#### 2. Instruction Fetch Output (IF2)
+
+**Function**: Align/decode lengths and register fetch outputs  
+**Module**: fetch_unit.sv
+
+**Operations**:
 - Extract first instruction (specifier + opcode → determine length)
 - Extract second instruction for dual-issue
+- Register outputs and hold until accepted by the IB
 - Update PC based on **accepted** instruction bytes (IB enqueue)
 
 **Output**: Two potential instructions (inst_data_0, inst_data_1) with PC and length
 
 **Key Feature**: Pre-decodes instruction boundaries to enable dual-issue without stalling.
 
-#### 2. Instruction Buffer (IB)
+#### 3. Instruction Buffer (IB)
 
-**Function**: Queue fetched instructions between IF and ID  
-**Module**: cpu_core.sv (IB queue logic)
+**Function**: Queue fetched instructions between IF2 and ID  
+**Module**: ib_queue.sv
 
 **Operations**:
-- Accept up to two instructions per cycle from IF
+- Accept up to two instructions per cycle from IF2
 - Dequeue up to two instructions per cycle to ID (based on issue decisions)
 - Maintain a 6-entry FIFO-like queue with shift behavior
 - Flush on branch taken
 
 **Output**: Two queued instructions (ib_out_0, ib_out_1) for decode
 
-#### 3. Instruction Decode (ID)
+#### 4. Instruction Decode (ID)
 
 **Function**: Decode instructions and read operands  
 **Modules**: decode_unit.sv, issue_unit.sv, register_file.sv
@@ -541,7 +554,7 @@ IF  ->  IB  ->  ID  ->  EX  ->  MEM  ->  WB
 
 **Dual-Issue Logic**: The issue_unit checks for hazards between the two instructions and decides if both can proceed.
 
-#### 4. Execute (EX)
+#### 5. Execute (EX)
 
 **Function**: Perform arithmetic, logic, and branch evaluation  
 **Modules**: execute_stage.sv, alu.sv, multiply_unit.sv, branch_unit.sv
@@ -558,7 +571,7 @@ IF  ->  IB  ->  ID  ->  EX  ->  MEM  ->  WB
 
 **Forwarding**: Operand forwarding MUXes select data from EX, MEM, or WB stages to resolve RAW hazards.
 
-#### 5. Memory Access (MEM)
+#### 6. Memory Access (MEM)
 
 **Function**: Access unified memory for load/store  
 **Module**: memory_stage.sv
@@ -574,7 +587,7 @@ IF  ->  IB  ->  ID  ->  EX  ->  MEM  ->  WB
 
 **Note**: Only one memory operation can complete per cycle. If both instructions need memory, the second stalls.
 
-#### 6. Write-Back (WB)
+#### 7. Write-Back (WB)
 
 **Function**: Write results to register file and update flags  
 **Module**: writeback_stage.sv
@@ -599,6 +612,8 @@ Data flows between stages through pipeline registers and the IB queue:
 Each register has:
 - **Stall capability**: Freeze current data when pipeline stalls
 - **Flush capability**: Insert pipeline bubble (NOP) on branch mispredict
+
+**Note**: Timing diagrams below label **IF** as the registered fetch output stage (IF2). IF1 (request/buffer fill) is omitted for readability.
 
 ### Pipeline Timing Diagram
 
@@ -774,7 +789,7 @@ The NeoCore16x32 architecture combines:
 - **Big-endian byte ordering** consistently throughout
 - **Von Neumann memory** with unified code/data space
 - **Dual-issue superscalar** execution for performance
-- **6-stage pipeline** with hardware hazard detection
+- **7-stage pipeline** with split fetch and hardware hazard detection
 
 The architecture is designed for FPGA implementation with emphasis on:
 - Synthesizable RTL

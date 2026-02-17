@@ -82,8 +82,9 @@ module issue_unit
       write_port_conflict = 1'b1;
     end
     
-    // Branch restriction: branches must issue alone
-    branch_restriction = inst0_is_branch || inst1_is_branch;
+    // Branch restriction: allow a branch to dual-issue with a non-branch.
+    // The execute stage will squash slot 1 if slot 0's branch is taken.
+    branch_restriction = inst0_is_branch && inst1_is_branch;
     
     // Halt restriction: HLT must issue alone
     halt_restriction = inst0_is_halt || inst1_is_halt;
