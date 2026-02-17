@@ -64,11 +64,20 @@ module cpu_core
   // ==========================================================================
   
   logic stall_pipeline;
+  logic stall_id_ex;
   logic stall_frontend;
   logic [1:0] consumed_count; // Forward declaration
   logic flush_if, flush_id, flush_ex;
+  logic branch_taken_raw;
+  logic [31:0] branch_target_raw;
+  logic branch_taken_ctrl;
+  logic [31:0] branch_target_ctrl;
+  // Preserve legacy internal names used by existing testbench probes.
   logic branch_taken;
   logic [31:0] branch_target;
+
+  assign branch_taken = branch_taken_raw;
+  assign branch_target = branch_target_raw;
   
   // ==========================================================================
   // Fetch Stage
@@ -94,18 +103,23 @@ module cpu_core
   if_id_t ib_in_0, ib_in_1;
   logic [1:0] accept_count;
   
-  // Combined Branch Control
-  logic        real_branch_taken;
-  logic [31:0] real_branch_target;
-  
-  assign real_branch_taken = branch_taken;
-  assign real_branch_target = branch_target;
+  // Break the EX->frontend critical path by registering branch control once.
+  // Keep this behavior identical across simulation and FPGA builds.
+  always_ff @(posedge clk) begin
+    if (rst) begin
+      branch_taken_ctrl <= 1'b0;
+      branch_target_ctrl <= 32'h0;
+    end else begin
+      branch_taken_ctrl <= branch_taken_raw;
+      branch_target_ctrl <= branch_target_raw;
+    end
+  end
 
   fetch_unit fetch (
     .clk(clk),
     .rst(rst),
-    .branch_taken(real_branch_taken),
-    .branch_target(real_branch_target),
+    .branch_taken(branch_taken_ctrl),
+    .branch_target(branch_target_ctrl),
     .mem_addr(mem_if_addr),
     .mem_req(mem_if_req),
     .mem_rdata(mem_if_rdata),
@@ -140,7 +154,7 @@ module cpu_core
   ib_queue ibq (
     .clk(clk),
     .rst(rst),
-    .flush(branch_taken),
+    .flush(branch_taken_ctrl),
     .stall(stall_frontend),
     .halted(halted),
     .in0(ib_in_0),
@@ -435,8 +449,8 @@ module cpu_core
   id_ex_reg id_ex_reg_0 (
     .clk(clk),
     .rst(rst),
-    .stall(stall_pipeline),
-    .flush(flush_ex || branch_taken),
+    .stall(stall_id_ex),
+    .flush(flush_ex || branch_taken_raw),
     .data_in(id_ex_in_0),
     .data_out(id_ex_out_0)
   );
@@ -444,8 +458,8 @@ module cpu_core
   id_ex_reg id_ex_reg_1 (
     .clk(clk),
     .rst(rst),
-    .stall(stall_pipeline),
-    .flush(flush_ex || branch_taken),
+    .stall(stall_id_ex),
+    .flush(flush_ex || branch_taken_raw),
     .data_in(id_ex_in_1),
     .data_out(id_ex_out_1)
   );
@@ -533,8 +547,8 @@ module cpu_core
     .v_flag(v_flag),
     .ex_mem_0(ex_mem_in_0),
     .ex_mem_1(ex_mem_in_1),
-    .branch_taken(branch_taken),
-    .branch_target(branch_target)
+    .branch_taken(branch_taken_raw),
+    .branch_target(branch_target_raw)
   );
   
   // ==========================================================================
@@ -649,6 +663,7 @@ module cpu_core
   // Stall entire pipeline only for hazards, memory stalls, or once fully halted
   assign stall_frontend = hazard_stall || mem_stall || halted;
   assign stall_pipeline = mem_stall || halted;
+  assign stall_id_ex = stall_pipeline || branch_taken_ctrl;
   
   // ==========================================================================
   // Current PC Reporting

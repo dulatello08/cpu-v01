@@ -57,6 +57,7 @@ module fetch_unit
   logic        out_valid_1;
 
   logic        out_hold;
+  localparam logic FETCH_DUAL_ENABLE = 1'b1;
 
   // ============================================================================
   // Buffer State
@@ -171,27 +172,7 @@ module fetch_unit
     pf_valid_eff = buf_pf_valid;
     p2_valid_eff = buf_p2_valid;
 
-    if (mem_ack && (req_q_count != 2'd0)) begin
-      case (req_q0)
-        REQ_HI: begin
-          hi_data_eff = mem_rdata;
-          hi_valid_eff = 1'b1;
-        end
-        REQ_LO: begin
-          lo_data_eff = mem_rdata;
-          lo_valid_eff = 1'b1;
-        end
-        REQ_PF: begin
-          pf_data_eff = mem_rdata;
-          pf_valid_eff = 1'b1;
-        end
-        REQ_P2: begin
-          p2_data_eff = mem_rdata;
-          p2_valid_eff = 1'b1;
-        end
-        default: ;
-      endcase
-    end
+
   end
 
   // Select the PC/buffer view for decode. If the current outputs are being
@@ -264,33 +245,102 @@ module fetch_unit
   logic [3:0] pc_offset;
   assign pc_offset = decode_pc[3:0]; // Offset within buf_hi
   
-  // Helper to extract 9 bytes at offset
+  // Helper to extract up to 9 bytes at offset without variable part-select.
+  // Bytes beyond the 32-byte buffer are padded with zero.
   function automatic logic [71:0] extract_9_bytes(input logic [255:0] buf_in, input logic [4:0] off);
-      // Byte 0 of buffer is at [255:248]
-      // Byte 'off' is at [255 - off*8 ... ]
-      // We want 9 bytes (72 bits).
-      int start_idx;
-      start_idx = 255 - (int'(off) * 8);
-      return buf_in[start_idx -: 72];
+      begin
+          case (off)
+              5'd0:  extract_9_bytes = buf_in[255 -: 72];
+              5'd1:  extract_9_bytes = buf_in[247 -: 72];
+              5'd2:  extract_9_bytes = buf_in[239 -: 72];
+              5'd3:  extract_9_bytes = buf_in[231 -: 72];
+              5'd4:  extract_9_bytes = buf_in[223 -: 72];
+              5'd5:  extract_9_bytes = buf_in[215 -: 72];
+              5'd6:  extract_9_bytes = buf_in[207 -: 72];
+              5'd7:  extract_9_bytes = buf_in[199 -: 72];
+              5'd8:  extract_9_bytes = buf_in[191 -: 72];
+              5'd9:  extract_9_bytes = buf_in[183 -: 72];
+              5'd10: extract_9_bytes = buf_in[175 -: 72];
+              5'd11: extract_9_bytes = buf_in[167 -: 72];
+              5'd12: extract_9_bytes = buf_in[159 -: 72];
+              5'd13: extract_9_bytes = buf_in[151 -: 72];
+              5'd14: extract_9_bytes = buf_in[143 -: 72];
+              5'd15: extract_9_bytes = buf_in[135 -: 72];
+              5'd16: extract_9_bytes = buf_in[127 -: 72];
+              5'd17: extract_9_bytes = buf_in[119 -: 72];
+              5'd18: extract_9_bytes = buf_in[111 -: 72];
+              5'd19: extract_9_bytes = buf_in[103 -: 72];
+              5'd20: extract_9_bytes = buf_in[95 -: 72];
+              5'd21: extract_9_bytes = buf_in[87 -: 72];
+              5'd22: extract_9_bytes = buf_in[79 -: 72];
+              5'd23: extract_9_bytes = buf_in[71 -: 72];
+              5'd24: extract_9_bytes = {buf_in[63:0], 8'h00};
+              5'd25: extract_9_bytes = {buf_in[55:0], 16'h0000};
+              5'd26: extract_9_bytes = {buf_in[47:0], 24'h000000};
+              5'd27: extract_9_bytes = {buf_in[39:0], 32'h00000000};
+              5'd28: extract_9_bytes = {buf_in[31:0], 40'h0000000000};
+              5'd29: extract_9_bytes = {buf_in[23:0], 48'h000000000000};
+              5'd30: extract_9_bytes = {buf_in[15:0], 56'h00000000000000};
+              5'd31: extract_9_bytes = {buf_in[7:0], 64'h0000000000000000};
+              default: extract_9_bytes = 72'h0;
+          endcase
+      end
   endfunction
 
-  logic [71:0] raw_inst_0, raw_inst_1;
+  function automatic logic [7:0] extract_byte(input logic [255:0] buf_in, input logic [4:0] off);
+      begin
+          case (off)
+              5'd0:  extract_byte = buf_in[255 -: 8];
+              5'd1:  extract_byte = buf_in[247 -: 8];
+              5'd2:  extract_byte = buf_in[239 -: 8];
+              5'd3:  extract_byte = buf_in[231 -: 8];
+              5'd4:  extract_byte = buf_in[223 -: 8];
+              5'd5:  extract_byte = buf_in[215 -: 8];
+              5'd6:  extract_byte = buf_in[207 -: 8];
+              5'd7:  extract_byte = buf_in[199 -: 8];
+              5'd8:  extract_byte = buf_in[191 -: 8];
+              5'd9:  extract_byte = buf_in[183 -: 8];
+              5'd10: extract_byte = buf_in[175 -: 8];
+              5'd11: extract_byte = buf_in[167 -: 8];
+              5'd12: extract_byte = buf_in[159 -: 8];
+              5'd13: extract_byte = buf_in[151 -: 8];
+              5'd14: extract_byte = buf_in[143 -: 8];
+              5'd15: extract_byte = buf_in[135 -: 8];
+              5'd16: extract_byte = buf_in[127 -: 8];
+              5'd17: extract_byte = buf_in[119 -: 8];
+              5'd18: extract_byte = buf_in[111 -: 8];
+              5'd19: extract_byte = buf_in[103 -: 8];
+              5'd20: extract_byte = buf_in[95 -: 8];
+              5'd21: extract_byte = buf_in[87 -: 8];
+              5'd22: extract_byte = buf_in[79 -: 8];
+              5'd23: extract_byte = buf_in[71 -: 8];
+              5'd24: extract_byte = buf_in[63 -: 8];
+              5'd25: extract_byte = buf_in[55 -: 8];
+              5'd26: extract_byte = buf_in[47 -: 8];
+              5'd27: extract_byte = buf_in[39 -: 8];
+              5'd28: extract_byte = buf_in[31 -: 8];
+              5'd29: extract_byte = buf_in[23 -: 8];
+              5'd30: extract_byte = buf_in[15 -: 8];
+              5'd31: extract_byte = buf_in[7 -: 8];
+              default: extract_byte = 8'h00;
+          endcase
+      end
+  endfunction
+
   logic [3:0]  len_0, len_1;
   logic [3:0]  inst0_off;
-  logic [4:0]  inst1_off;
 
   always_comb begin
+      logic [4:0] inst0_off_5;
+      logic [7:0] opcode_0;
+      logic [7:0] spec_0;
       inst0_off = pc_offset;
-      raw_inst_0 = extract_9_bytes(buffer, {1'b0, inst0_off});
-      
-      // Calculate length of inst 0
-      len_0 = get_inst_length(raw_inst_0[63:56], raw_inst_0[71:64]);
-      
-      // Inst 1
-      inst1_off = {1'b0, inst0_off} + {1'b0, len_0};
-      
-      raw_inst_1 = extract_9_bytes(buffer, inst1_off);
-      len_1 = get_inst_length(raw_inst_1[63:56], raw_inst_1[71:64]);
+      inst0_off_5 = {1'b0, inst0_off};
+      spec_0 = extract_byte(buffer, inst0_off_5);
+      opcode_0 = extract_byte(buffer, inst0_off_5 + 5'd1);
+
+      // Calculate length from opcode/specifier bytes only.
+      len_0 = get_inst_length(opcode_0, spec_0);
   end
 
   // Validity Checks
@@ -308,6 +358,7 @@ module fetch_unit
       inst1_fits = 0;
       inst0_len_knowable = 0;
       inst1_len_knowable = 0;
+      len_1 = 4'h0;
       
       if (decode_hi_valid && (decode_pc[31:4] == decode_base_addr[31:4])) begin
           // Inst 0 Length knowability: Need Byte 0 (Spec) and Byte 1 (Opcode).
@@ -332,7 +383,7 @@ module fetch_unit
           end
           
           // Inst 1
-          if (inst0_fits && len_0 > 0) begin
+          if (FETCH_DUAL_ENABLE && inst0_fits && len_0 > 0) begin
              logic [4:0] start_off_1;
              start_off_1 = {1'b0, pc_offset} + len_0;
              
@@ -347,6 +398,11 @@ module fetch_unit
              
              if (inst1_len_knowable) begin
                 logic [5:0] end_off_1;
+                logic [7:0] opcode_1;
+                logic [7:0] spec_1;
+                spec_1 = extract_byte(buffer, start_off_1);
+                opcode_1 = extract_byte(buffer, start_off_1 + 5'd1);
+                len_1 = get_inst_length(opcode_1, spec_1);
                 end_off_1 = {1'b0, start_off_1} + len_1;
                 if (end_off_1 <= 16) begin
                     inst1_fits = 1;
@@ -360,7 +416,9 @@ module fetch_unit
 
   // Output Assignment (Combinational -> Registered IF2 stage)
   always_comb begin
-      // Defaults
+      logic [4:0] inst0_off_5;
+      logic [4:0] start_off_1;
+      // Payload always follows current decode window; validity bits gate use.
       next_valid_0 = 0;
       next_inst_data_0 = 72'h0;
       next_len_0 = len_0;
@@ -368,18 +426,22 @@ module fetch_unit
       
       next_valid_1 = 0;
       next_inst_data_1 = 72'h0;
-      next_len_1 = len_1;
-      next_pc_1 = decode_pc + {28'h0, len_0};
-      
-      if (!branch_taken && inst0_fits) begin
-          next_valid_0 = 1;
-          next_inst_data_0 = raw_inst_0;
-          
-          if (inst1_fits) begin
-              next_valid_1 = 1;
-              next_inst_data_1 = raw_inst_1;
-          end
+      next_len_1 = 4'h0;
+      next_pc_1 = 32'h0;
+      inst0_off_5 = {1'b0, pc_offset};
+      start_off_1 = 5'd0;
+
+      next_inst_data_0 = extract_9_bytes(buffer, inst0_off_5);
+
+      if (FETCH_DUAL_ENABLE) begin
+        next_len_1 = len_1;
+        next_pc_1 = decode_pc + {28'h0, len_0};
+        start_off_1 = inst0_off_5 + len_0;
+        next_inst_data_1 = extract_9_bytes(buffer, start_off_1);
       end
+
+      if (inst0_fits) next_valid_0 = 1;
+      if (FETCH_DUAL_ENABLE && inst1_fits) next_valid_1 = 1;
   end
 
   // ============================================================================
@@ -389,24 +451,30 @@ module fetch_unit
   // Registered output stage (IF2).
   assign out_hold = (accept_count == 2'd0) && out_valid_0;
 
+  // Keep branch flush local to validity bits; payload data can remain stale when
+  // invalid. This avoids routing branch_kill through wide IF2 payload controls.
   always_ff @(posedge clk) begin
     if (rst || branch_taken) begin
       out_valid_0 <= 1'b0;
+      out_valid_1 <= 1'b0;
+    end else if (!out_hold) begin
+      out_valid_0 <= next_valid_0;
+      out_valid_1 <= next_valid_1;
+    end
+  end
+
+  always_ff @(posedge clk) begin
+    if (rst) begin
       out_inst_data_0 <= 72'h0;
       out_len_0 <= 4'h0;
       out_pc_0 <= 32'h0;
-
-      out_valid_1 <= 1'b0;
       out_inst_data_1 <= 72'h0;
       out_len_1 <= 4'h0;
       out_pc_1 <= 32'h0;
     end else if (!out_hold) begin
-      out_valid_0 <= next_valid_0;
       out_inst_data_0 <= next_inst_data_0;
       out_len_0 <= next_len_0;
       out_pc_0 <= next_pc_0;
-
-      out_valid_1 <= next_valid_1;
       out_inst_data_1 <= next_inst_data_1;
       out_len_1 <= next_len_1;
       out_pc_1 <= next_pc_1;

@@ -26,6 +26,14 @@ module core_top (
   logic rst;
   assign rst = ~btn[0]; // Invert active-low button to active-high internal reset
 
+`ifdef FPGA_ECP5
+  // Route button reset onto the dedicated global set/reset network.
+  // This reduces pressure on regular routing resources for high-fanout reset.
+  GSR global_set_reset (
+    .GSR(rst)
+  );
+`endif
+
   // ==========================================================================
   // Internal Wires
   // ==========================================================================

@@ -236,9 +236,6 @@ module ib_queue
       count <= '0;
       for (int i = 0; i < IB_DEPTH; i++) begin
         ib_valid[i] <= 1'b0;
-        ib_pc[i] <= 32'h0;
-        ib_inst_data[i] <= 72'h0;
-        ib_inst_len[i] <= 4'h0;
       end
     end else begin
       for (int i = 0; i < IB_DEPTH; i++) begin

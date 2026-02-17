@@ -251,7 +251,7 @@ wave_alu: $(BUILD_DIR)/alu_tb.vcd
 # We combine everything into one file to handle packages/interfaces correctly
 build/*.v: $(RTL_SRCS)
 	@mkdir -p $(BUILD_DIR)
-	sv2v -w $(BUILD_DIR) $(RTL_SRCS)
+	sv2v -D FPGA_ECP5 -w $(BUILD_DIR) $(RTL_SRCS)
 # Synthesis (Yosys) using the converted Verilog file
 core_top.json: build/*.v
 	yosys -p "read_verilog build/*.v; synth_ecp5 -top core_top -json core_top.json"
