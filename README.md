@@ -4,7 +4,7 @@
 > Docs Home: [DOCS_INDEX.md](DOCS_INDEX.md)
 
 NeoCore16x32 is a dual-issue, in-order CPU written in SystemVerilog.
-It is built to be understandable, testable, and surprisingly fast for a small FPGA-friendly core.
+It is built to be understandable, testable, and fast enough to punch above its area class on FPGA.
 
 ## What It Is
 
@@ -36,31 +36,18 @@ make fpga
 make prog
 ```
 
-## Main Flexes
+## Why This Core is fast
 
-Numbers below are from your `dhrystone.s`-style compact kernel run
-(5 iterations, inline flow, no `jsr`/`rts`; so this is not an official Dhrystone score).
+Measured on a Dhrystone-style compact kernel (`1000` iterations, inline flow, no `jsr`/`rts`):
 
-- **0.912 issued IPC**
-  - ~45.6% of 2-wide theoretical peak
-  - ~62,024 instructions issued over 68,009 cycles
-- **22.8 MIPS @ 25 MHz** (rounded to **23 MIPS**)
-- **Dual-issue hit rate: 28.0% of cycles**
-  - Dual issue contributes ~30.6% of all issued instructions
-- **Front-end feed is strong**
-  - Fetch dual-valid: 63.2%
-  - IB dual-valid: 60.3%
-- **Main issue limiter is dependencies, not multiply**
-  - Issue rejects: data dependency 59.1%, write conflict 36.4%, mem conflict 4.5%
-  - `mul restrict`: 0.0%
-- **Stalls are mostly memory-side**
-  - Stall cycles: memory 10.3%, hazard 1.5%
-  - Memory is 87.5% of total stall cycles
-
-LinkedIn-safe headline (with caveat):
-
-- **~23 MIPS at 25 MHz** on a Dhrystone-like kernel
-- **~0.825 dMIPS-equivalent** if treated as Dhrystone (non-standard, not official)
+- **~23 MIPS at just 25 MHz**  
+  Efficient, clean in-order dual-issue that converts modest clock into real throughput.
+- **Dual-issue that actually shows up in silicon math**  
+  Nearly a third of issued work comes from slot 2, not theoretical marketing IPC.
+- **Frontend and execute path stay aggressive under load**  
+  Fetch/IB keep dual-valid rates high while multiply restrictions stay at zero.
+- **NeoCore16x32 delivers ~23 MIPS @ 25 MHz and ~0.825 dMIPS-equivalent on a Dhrystone-like kernel**  
+  (non-standard run, so treated as directional performance, not official Dhrystone certification)
 
 ## Repo Layout
 
